@@ -1,4 +1,4 @@
-/*
+ /*
  * Copyright (C) 2014 the contributors as stated in the AUTHORS file
  *
  * This file is part of open62541. open62541 is free software: you can
@@ -21,14 +21,13 @@ extern "C" {
 #endif
 
 #include "ua_types.h"
+#include "ua_util.h"
 #include "ua_types_generated.h"
 #include "ua_connection.h"
 #include "ua_log.h"
 
 /**
  * @defgroup server Server
- *
- * @brief This module describes the server object and functions to interact with * it.
  *
  * @{
  */
@@ -38,40 +37,132 @@ typedef struct UA_Server UA_Server;
 
 UA_Server UA_EXPORT * UA_Server_new(UA_String *endpointUrl, UA_ByteString *serverCertificate);
 void UA_EXPORT UA_Server_delete(UA_Server *server);
-void UA_EXPORT UA_Server_processBinaryMessage(UA_Server *server, UA_Connection *connection,
-                                              const UA_ByteString *msg);
 
 /**
- * @brief Adds a node to the server's address space
+ * Add a node to the server's address space
  *
  * If adding the node succeeds, the pointer to the node is set to null. If the
  * original nodeid is null (ns=0,i=0), a unique new nodeid is created for the
  * node and returned in the AddNodesResult struct. */
-UA_AddNodesResult UA_EXPORT
-UA_Server_addNode(UA_Server *server, const UA_Node **node, const UA_ExpandedNodeId *parentNodeId,
-                  const UA_NodeId *referenceTypeId);
+UA_AddNodesResult UA_EXPORT UA_Server_addNode(UA_Server *server, const UA_Node **node,
+                                              const UA_ExpandedNodeId *parentNodeId,
+                                              const UA_NodeId *referenceTypeId);
 
-/** @brief Adds a reference to the server's address space */
-UA_StatusCode UA_EXPORT
-UA_Server_addReference(UA_Server *server, const UA_AddReferencesItem *item);
+/** Add a reference to the server's address space */
+UA_StatusCode UA_EXPORT UA_Server_addReference(UA_Server *server, const UA_AddReferencesItem *item);
 
 /**
- * @brief Adds a VariableNode to the server's address space that points to a
- * scalar value. The value must lie on the heap and cannot be reused afterwards
- * as it becomes attached to the lifecycle of the VariableNode */
-void UA_EXPORT
-UA_Server_addScalarVariableNode(UA_Server *server, UA_QualifiedName *browseName, void *value,
-                                const UA_TypeVTable *vt, const UA_ExpandedNodeId *parentNodeId,
-                                const UA_NodeId *referenceTypeId );
+ * Add a scalar variable (node) to the server's address space
+ *
+ * The value must lie on the heap and must not be reused after adding it, as it
+ * becomes attached to the lifecycle of the VariableNode. */
+void UA_EXPORT UA_Server_addScalarVariable(UA_Server *server, UA_QualifiedName *browseName,
+                                           void *value, const UA_TypeVTable *vt,
+                                           const UA_ExpandedNodeId *parentNodeId,
+                                           const UA_NodeId *referenceTypeId );
+
+/**
+ * @defgroup dispatch Dispatch Queue
+ *
+ * @brief Work items (network events, timed events, ...) are collected and
+ * dispatched to worker threads from a central queue
+ *
+ * @{
+ */
+
+/** Contains the necessary information to dispatch work to a worker thread */
+typedef struct UA_WorkItem {
+    enum {
+        UA_WORKITEMTYPE_BINARYNETWORKMESSAGE,
+        UA_WORKITEMTYPE_BINARYNETWORKCLOSED,
+        UA_WORKITEMTYPE_METHODCALL
+    } type; ///< Type of the WorkItem
+    union {
+        struct {
+            UA_Connection *connection;
+            UA_ByteString message;
+        } binaryNetworkMessage; ///< A message was received
+        struct {
+            UA_Connection *connection;
+        } binaryNetworkClose; ///< A connection has been closed (internal or remotely)
+        struct {
+            void * data;
+            void (*method)(UA_Server *server, void *data);
+        } methodCall; ///< Just call the function with an opaque data pointer
+    } item;
+} UA_WorkItem;
+
 /** @} */
 
 /**
- * @ingroup server
+ * Interface to the binary network layers. This structure is returned from the
+ * function that initializes the network layer. The layer is already bound to a
+ * specific port and listening. The functions in the structure are never called
+ * in parallel but only sequentially from the server's main loop. So the network
+ * layer does not need to be thread-safe.
+ */
+typedef struct {
+    void *networkLayerHandle; ///< Internal data of the network layer
+
+    /**
+     * Gets called from the main server loop and returns the work that
+     * accumulated (messages and close events) for dispatch. The networklayer
+     * does not wait on connections but returns immediately the work that
+     * accumulated.
+     *
+     * @param workItems When the returned integer is positive, *workItems points
+     * to an array of WorkItems of the returned size.
+     * @return The size of the returned workItems array. If the result is
+     * negative, an error has occured.
+     */
+    UA_Int32 (*getWork)(void *networkLayerHandle, UA_WorkItem **workItems);
+
+    /**
+     * Closes the network connection and returns all the work that needs to
+     * be finished before the network layer can be safely deleted.
+     *
+     * @param workItems When the returned integer is positive, *workItems points
+     * to an array of WorkItems of the returned size.
+     * @return The size of the returned workItems array. If the result is
+     * negative, an error has occured.
+     */
+    UA_Int32 (*shutdown)(void *networkLayerHandle, UA_WorkItem **workItems);
+
+    /** Deletes the network layer. Call only after a successfull shutdown. */
+    void (*delete)(void *networkLayerHandle);
+} UA_NetworkLayer;
+
+/**
+ * Adds a network layer to the server. The network layer is destroyed together
+ * with the server. Do not use it after adding it as it might be moved around on
+ * the heap.
+ */
+void UA_EXPORT UA_Server_addNetworkLayer(UA_Server *server, UA_NetworkLayer *networkLayer);
+
+/**
+ * Runs the main loop of the server. In each iteration, this calls into the
+ * networklayers to see if work have arrived and checks if timed events need to
+ * be triggered.
+ *
+ * @param server The server object
+ * @param nThreads The number of worker threads. Is ignored if MULTITHREADING is
+ * not activated.
+ * @param running Points to a booloean value on the heap. When running is set to
+ * false, the worker threads and the main loop close and the server is shut
+ * down.
+ * @return Indicates whether the server shut down cleanly
+ *
+ */
+UA_StatusCode UA_EXPORT UA_Server_run(UA_Server *server, UA_UInt32 nThreads, UA_Boolean *running);
+
+/** @} */
+
+/**
+ * @ingroup nodestore
  *
  * @defgroup external_nodestore External Nodestore
  *
- * @brief This modules describes the VTable and function signatures to add an
- * external nodestore to the server.
+ * @brief An external application that manages its own data and data model
  *
  * To plug in outside data sources, one can use
  *
@@ -82,7 +173,7 @@ UA_Server_addScalarVariableNode(UA_Server *server, UA_QualifiedName *browseName,
  * the "local" nodestore of open62541. Namespace Zero is always in the local
  * nodestore.
  *
- *  @{
+ * @{
  */
 
 typedef UA_Int32 (*UA_ExternalNodeStore_addNodes)

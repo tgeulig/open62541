@@ -119,7 +119,7 @@ UA_StatusCode UA_Server_addReferenceWithSession(UA_Server *server, UA_Session *s
     if(ensFirst) {
         // todo: use external nodestore
     } else
-        retval = addOneWayReferenceWithSession (server, session, item);
+        retval = addOneWayReferenceWithSession(server, session, item);
 
     if(retval) return retval;
 

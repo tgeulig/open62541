@@ -26,8 +26,7 @@ UA_StatusCode UA_SecureChannelManager_open(UA_SecureChannelManager *cm, UA_Conne
 UA_StatusCode UA_SecureChannelManager_renew(UA_SecureChannelManager *cm, UA_Connection *conn,
                                             const UA_OpenSecureChannelRequest *request,
                                             UA_OpenSecureChannelResponse *response);
-UA_StatusCode UA_SecureChannelManager_get(UA_SecureChannelManager *cm, UA_UInt32 channelId,
-                                          UA_SecureChannel **channel);
+UA_SecureChannel * UA_SecureChannelManager_get(UA_SecureChannelManager *cm, UA_UInt32 channelId);
 UA_StatusCode UA_SecureChannelManager_close(UA_SecureChannelManager *cm, UA_UInt32 channelId);
 
 #endif /* UA_CHANNEL_MANAGER_H_ */

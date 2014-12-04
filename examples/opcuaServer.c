@@ -16,18 +16,10 @@
 #include "logger_stdout.h"
 #include "networklayer_tcp.h"
 
-#ifdef MULTITHREADING
-#include <urcu.h>
-#endif
-
 UA_Boolean running = 1;
 
 void stopHandler(int sign) {
 	running = 0;
-}
-
-void serverCallback(UA_Server *server) {
-    //	printf("does whatever servers do\n");
 }
 
 UA_ByteString loadCertificate() {
@@ -37,7 +29,7 @@ UA_ByteString loadCertificate() {
 	fp=fopen("localhost.der", "rb");
 
 	if(!fp) {
-        errno = 0; // otherwise we think sth went wrong on the tcp socket level
+        errno = 0; // we read errno also from the tcp layer...
         return certificate;
     }
 
@@ -52,10 +44,8 @@ UA_ByteString loadCertificate() {
 
     return certificate;
 }
+
 int main(int argc, char** argv) {
-#ifdef MULTITHREADING
-    rcu_register_thread();
-#endif
 	signal(SIGINT, stopHandler); /* catches ctrl-c */
 
 	UA_String endpointUrl;
@@ -95,15 +85,10 @@ int main(int argc, char** argv) {
 #endif
 	
 	#define PORT 16664
-	NetworklayerTCP* nl = NetworklayerTCP_new(UA_ConnectionConfig_standard, PORT);
+    UA_Server_addNetworkLayer(server, NetworkLayerTCP_new(UA_ConnectionConfig_standard, PORT));
 	printf("Server started, connect to to opc.tcp://127.0.0.1:%i\n", PORT);
-	struct timeval callback_interval = {1, 0}; // 1 second
-	UA_Int32 retval = NetworkLayerTCP_run(nl, server, callback_interval, serverCallback, &running);
+    UA_StatusCode retval = UA_Server_run(server, 1, &running);
 	UA_Server_delete(server);
-	NetworklayerTCP_delete(nl);
     UA_String_deleteMembers(&endpointUrl);
-#ifdef MULTITHREADING
-    rcu_unregister_thread();
-#endif
 	return retval;
 }

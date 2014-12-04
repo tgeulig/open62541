@@ -1,8 +1,3 @@
-/**
- * @brief This files contains helper functions for the UA-Services that are used
- * internally as well (with a simplified API as no access rights are checked).
- */
-
 #ifndef UA_SERVICES_INTERNAL_H_
 #define UA_SERVICES_INTERNAL_H_
 

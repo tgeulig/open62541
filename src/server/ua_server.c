@@ -21,9 +21,86 @@ static void UA_ExternalNamespace_deleteMembers(UA_ExternalNamespace *ens) {
     ens->externalNodeStore.delete(ens->externalNodeStore.ensHandle);
 }
 
+/*****************/
+/* Network Layer */
+/*****************/
+
+void UA_Server_addNetworkLayer(UA_Server *server, UA_NetworkLayer *networkLayer) {
+    if(networkLayer == UA_NULL)
+        return;
+    if(server->nls == UA_NULL) {
+        server->nls = networkLayer;
+        server->nlsSize = 1;
+        return;
+    }
+
+    server->nls = UA_realloc(server->nls, sizeof(UA_NetworkLayer)*server->nlsSize+1);
+    server->nls[server->nlsSize] = *networkLayer;
+    server->nls++;
+    UA_free(networkLayer);
+}
+
 /**********/
 /* Server */
 /**********/
+
+/* The timed event and repeated event are only relevant for the main thread, not
+   the workers. */
+typedef struct UA_TimedEvent {
+    UA_WorkItem workItem;
+    UA_DateTime time;
+} UA_TimedEvent;
+
+typedef struct UA_RepeatedEvent {
+    UA_TimedEvent next;
+    UA_UInt32 interval; // in 100ns resolution
+} UA_RepeatedEvent;
+
+UA_StatusCode UA_Server_run(UA_Server *server, UA_UInt32 nThreads, UA_Boolean *running) {
+#ifdef MULTITHREADING
+    server->running = running;
+    rcu_register_thread();
+    pthread_t *thr = UA_alloca(nThreads * sizeof(pthread_t));
+    for(UA_UInt32 i=0;i<nThreads;i++)
+        pthread_create(&thr[i], UA_NULL, (void* (*)(void*))runWorkerLoop, server);
+#endif
+    UA_StatusCode retval = UA_STATUSCODE_GOOD;
+
+    while(*running) {
+        // Check if messages have arrived and handle them.
+        for(UA_Int32 i=0;i<server->nlsSize;i++) {
+            UA_NetworkLayer *nl = &server->nls[i];
+            UA_WorkItem *workArray;
+            UA_UInt32 workArraySize = nl->getWork(nl->networkLayerHandle, &workArray);
+            #ifdef MULTITHREADING
+            struct workListNode *wln = UA_alloc(sizeof(struct workListNode));
+            if(!wln) {
+                // todo: error handling
+            }
+            *wln = {.workSize = workArraySize, .work = workArray};
+            cds_wfq_node_init(&wln->node);
+            cds_wfq_enqueue(&server->dispatchQueue, &wln->node);
+            #else
+            processWork(server, workArray, workArraySize);
+            #endif
+        }
+
+        // Check if timeouts for events have been triggered and handle them.
+        // Also find the delay until the next event is due.
+
+        // exit if something went horribly wrong
+        if(retval)
+            break;
+
+        // sleep if nothing happened in this iteration
+    }
+#ifdef MULTITHREADING
+    for(UA_UInt32 i=0;i<nThreads;i++)
+        pthread_join(thr[i], UA_NULL);
+    rcu_unregister_thread();
+#endif
+    return retval;
+}
 
 void UA_Server_delete(UA_Server *server) {
     UA_ApplicationDescription_deleteMembers(&server->description);
@@ -31,7 +108,9 @@ void UA_Server_delete(UA_Server *server) {
     UA_SessionManager_deleteMembers(&server->sessionManager);
     UA_NodeStore_delete(server->nodestore);
     UA_ByteString_deleteMembers(&server->serverCertificate);
-    UA_Array_delete(server->endpointDescriptions, server->endpointDescriptionsSize, &UA_TYPES[UA_ENDPOINTDESCRIPTION]);
+    UA_Array_delete(server->endpointDescriptions, server->endpointDescriptionsSize,
+                    &UA_TYPES[UA_ENDPOINTDESCRIPTION]);
+    // todo: empty and delete the dispatchQueue
     UA_free(server);
 }
 
@@ -39,7 +118,11 @@ UA_Server * UA_Server_new(UA_String *endpointUrl, UA_ByteString *serverCertifica
     UA_Server *server = UA_alloc(sizeof(UA_Server));
     if(!server)
         return UA_NULL;
-    
+
+#ifdef MULTITHREADING
+    cds_wfq_init(&server->dispatchQueue);
+#endif
+        
     // mockup application description
     UA_ApplicationDescription_init(&server->description);
     UA_String_copycstring("urn:servername:open62541:application", &server->description.productUri);

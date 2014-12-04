@@ -8,6 +8,8 @@
  *  @ingroup communication
  *
  *  @defgroup session Session
+ *
+ * @{
  */
 
 struct UA_Session {
@@ -39,5 +41,7 @@ UA_StatusCode UA_Session_updateLifetime(UA_Session *session);
 UA_StatusCode UA_Session_setExpirationDate(UA_Session *session);
 /** Gets the sessions pending lifetime (calculated from the timeout which was set) */
 UA_StatusCode UA_Session_getPendingLifetime(UA_Session *session, UA_Double *pendingLifetime);
+
+/** @} */
 
 #endif /* UA_SESSION_H_ */

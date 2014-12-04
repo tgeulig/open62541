@@ -290,15 +290,8 @@ UA_TYPE_DECODEBINARY(UA_Double,
                      mantissa = (mantissa / 256.0 ) + (UA_Double)(src->data[*offset+4] & 0xFF); // bits 32-39
                      mantissa = (mantissa / 256.0 ) + (UA_Double)(src->data[*offset+5] & 0xFF); // bits 40-47
                      mantissa = (mantissa / 256.0 ) + (UA_Double)(src->data[*offset+6] & 0x0F); // bits 48-51
-                     DBG_VERBOSE(printf("UA_Double_decodeBinary - mantissa=%f\n", mantissa));
                      biasedExponent  = (src->data[*offset+6] & 0xF0) >>  4; // bits 52-55
-                     DBG_VERBOSE(printf("UA_Double_decodeBinary - biasedExponent52-55=%d, src=%d\n",
-                                        biasedExponent,
-                                        src->data[*offset+6]));
                      biasedExponent |= ((UA_UInt32)(src->data[*offset+7] & 0x7F)) <<  4; // bits 56-62
-                     DBG_VERBOSE(printf("UA_Double_decodeBinary - biasedExponent56-62=%d, src=%d\n",
-                                        biasedExponent,
-                                        src->data[*offset+7]));
                      sign = ( src->data[*offset+7] & 0x80 ) ? -1.0 : 1.0; // bit 63
                      if(biasedExponent >= 1023)
                          *dst = (UA_Double)sign * (1 << (biasedExponent-1023)) * (1.0 + mantissa / 8.0 );

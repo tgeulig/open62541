@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "ua_securechannel_manager.h"
 #include "ua_session.h"
 #include "ua_statuscodes.h"
@@ -38,10 +40,28 @@ UA_StatusCode UA_SecureChannelManager_open(UA_SecureChannelManager           *cm
                                            UA_Connection                     *conn,
                                            const UA_OpenSecureChannelRequest *request,
                                            UA_OpenSecureChannelResponse      *response) {
-    struct channel_list_entry *entry = UA_alloc(sizeof(struct channel_list_entry));
-    if(!entry)
-        return UA_STATUSCODE_BADOUTOFMEMORY;
+    switch(request->securityMode) {
+    case UA_MESSAGESECURITYMODE_INVALID:
+        response->responseHeader.serviceResult = UA_STATUSCODE_BADSECURITYMODEREJECTED;
+        return response->responseHeader.serviceResult;
 
+        // fall through and handle afterwards
+    /* case UA_MESSAGESECURITYMODE_NONE: */
+    /*     UA_ByteString_copy(&request->clientNonce, &entry->channel.clientNonce); */
+    /*     break; */
+
+    case UA_MESSAGESECURITYMODE_SIGN:
+    case UA_MESSAGESECURITYMODE_SIGNANDENCRYPT:
+        response->responseHeader.serviceResult = UA_STATUSCODE_BADSECURITYMODEREJECTED;
+        return response->responseHeader.serviceResult;
+
+    default:
+        // do nothing
+        break;
+    }
+
+    struct channel_list_entry *entry = UA_alloc(sizeof(struct channel_list_entry));
+    if(!entry) return UA_STATUSCODE_BADOUTOFMEMORY;
     UA_SecureChannel_init(&entry->channel);
 
     entry->channel.connection = conn;
@@ -53,22 +73,7 @@ UA_StatusCode UA_SecureChannelManager_open(UA_SecureChannelManager           *cm
         request->requestedLifetime > cm->maxChannelLifetime ?
         cm->maxChannelLifetime : request->requestedLifetime;
 
-    switch(request->securityMode) {
-    case UA_MESSAGESECURITYMODE_INVALID:
-        printf("UA_SecureChannel_processOpenRequest - client demands invalid \n");
-        break;
-
-    case UA_MESSAGESECURITYMODE_NONE:
-        UA_ByteString_copy(&request->clientNonce, &entry->channel.clientNonce);
-        break;
-
-    case UA_MESSAGESECURITYMODE_SIGN:
-    case UA_MESSAGESECURITYMODE_SIGNANDENCRYPT:
-        printf("UA_SecureChannel_processOpenRequest - client demands signed & encrypted \n");
-        //TODO check if senderCertificate and ReceiverCertificateThumbprint are present
-        break;
-    }
-
+    UA_ByteString_copy(&request->clientNonce, &entry->channel.clientNonce);
     UA_String_copycstring("http://opcfoundation.org/UA/SecurityPolicy#None",
                           (UA_String *)&entry->channel.serverAsymAlgSettings.securityPolicyUri);
     LIST_INSERT_HEAD(&cm->channels, entry, pointers);
@@ -77,7 +82,6 @@ UA_StatusCode UA_SecureChannelManager_open(UA_SecureChannelManager           *cm
     UA_SecureChannel_generateNonce(&entry->channel.serverNonce);
     UA_ByteString_copy(&entry->channel.serverNonce, &response->serverNonce);
     UA_ChannelSecurityToken_copy(&entry->channel.securityToken, &response->securityToken);
-
     conn->channel = &entry->channel;
 
     return UA_STATUSCODE_GOOD;
@@ -87,10 +91,8 @@ UA_StatusCode UA_SecureChannelManager_renew(UA_SecureChannelManager           *c
                                             UA_Connection                     *conn,
                                             const UA_OpenSecureChannelRequest *request,
                                             UA_OpenSecureChannelResponse      *response) {
-
     UA_SecureChannel *channel = conn->channel;
-    if(channel == UA_NULL)
-        return UA_STATUSCODE_BADINTERNALERROR;
+    if(channel == UA_NULL) return UA_STATUSCODE_BADINTERNALERROR;
 
     channel->securityToken.tokenId         = cm->lastTokenId++;
     channel->securityToken.createdAt       = UA_DateTime_now(); // todo: is wanted?
@@ -106,17 +108,13 @@ UA_StatusCode UA_SecureChannelManager_renew(UA_SecureChannelManager           *c
     return UA_STATUSCODE_GOOD;
 }
 
-UA_StatusCode UA_SecureChannelManager_get(UA_SecureChannelManager *cm, UA_UInt32 channelId,
-                                          UA_SecureChannel **channel) {
+UA_SecureChannel * UA_SecureChannelManager_get(UA_SecureChannelManager *cm, UA_UInt32 channelId) {
     struct channel_list_entry *entry;
     LIST_FOREACH(entry, &cm->channels, pointers) {
-        if(entry->channel.securityToken.channelId == channelId) {
-            *channel = &entry->channel;
-            return UA_STATUSCODE_GOOD;
-        }
+        if(entry->channel.securityToken.channelId == channelId)
+            return &entry->channel;
     }
-    *channel = UA_NULL;
-    return UA_STATUSCODE_BADINTERNALERROR;
+    return UA_NULL;
 }
 
 UA_StatusCode UA_SecureChannelManager_close(UA_SecureChannelManager *cm, UA_UInt32 channelId) {

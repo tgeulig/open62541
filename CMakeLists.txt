@@ -20,13 +20,12 @@ set(lib_sources src/ua_types.c
                 ${PROJECT_BINARY_DIR}/src_generated/ua_namespace_0.c
                 src/ua_transport.c
                 ${PROJECT_BINARY_DIR}/src_generated/ua_transport_generated.c
-				src/ua_connection.c
                 src/ua_securechannel.c
                 src/ua_session.c
-                src/ua_util.c
                 src/server/ua_server.c
 				src/server/ua_server_addressspace.c
 				src/server/ua_server_binary.c
+                src/server/ua_server_worker.c
                 src/server/ua_securechannel_manager.c
                 src/server/ua_session_manager.c
                 src/server/ua_services_attribute.c
@@ -96,14 +95,14 @@ if(ENABLE_XML_ENCODING)
     list(APPEND generate_src_options "--with-xml")
 endif()
 
-### json
-option(ENABLE_JSON_ENCODING "Enable JSON-encoding of the UA types" OFF)
-if(ENABLE_JSON_ENCODING)
-    MATH(EXPR UA_ENCODING_AMOUNT "${UA_ENCODING_AMOUNT}+1")
-	include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src/ongoing")
-    list(APPEND lib_sources src/ongoing/ua_types_encoding_json.c)
-    list(APPEND generate_src_options "--with-json")
-endif(ENABLE_JSON_ENCODING)
+# ### json
+# option(ENABLE_JSON_ENCODING "Enable JSON-encoding of the UA types" OFF)
+# if(ENABLE_JSON_ENCODING)
+#     MATH(EXPR UA_ENCODING_AMOUNT "${UA_ENCODING_AMOUNT}+1")
+# 	include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src/ongoing")
+#     list(APPEND lib_sources src/ongoing/ua_types_encoding_json.c)
+#     list(APPEND generate_src_options "--with-json")
+# endif(ENABLE_JSON_ENCODING)
 
 ## multithreading
 option(MULTITHREADING "Enable multithreading" OFF)
@@ -154,7 +153,7 @@ include_directories("${PROJECT_BINARY_DIR}/src_generated")
 add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/src_generated/ua_types_generated.c
                           ${PROJECT_BINARY_DIR}/src_generated/ua_types_generated.h
                    PRE_BUILD
-                   COMMAND python ${PROJECT_SOURCE_DIR}/tools/generate_builtin.py --export-prototypes ${generate_src_options} ${PROJECT_SOURCE_DIR}/tools/schema/Opc.Ua.Types.bsd ${PROJECT_BINARY_DIR}/src_generated/ua_types_generated
+                   COMMAND python ${PROJECT_SOURCE_DIR}/tools/generate_builtin.py --export-prototypes ${generate_src_options} ${PROJECT_SOURCE_DIR}/tools/schema/Opc.Ua.Types.bsd ${PROJECT_BINARY_DIR}/src_generated/ua_types
                    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_builtin.py
                            ${CMAKE_CURRENT_SOURCE_DIR}/tools/schema/Opc.Ua.Types.bsd)
 
@@ -168,7 +167,7 @@ add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/src_generated/ua_namespace_0.c
 add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/src_generated/ua_transport_generated.c
                           ${PROJECT_BINARY_DIR}/src_generated/ua_transport_generated.h
                    PRE_BUILD
-                   COMMAND python ${PROJECT_SOURCE_DIR}/tools/generate_builtin.py --additional-includes=ua_transport.h ${PROJECT_SOURCE_DIR}/tools/schema/Custom.Opc.Ua.Transport.bsd ${PROJECT_BINARY_DIR}/src_generated/ua_transport_generated
+                   COMMAND python ${PROJECT_SOURCE_DIR}/tools/generate_builtin.py --additional-includes=ua_transport.h ${PROJECT_SOURCE_DIR}/tools/schema/Custom.Opc.Ua.Transport.bsd ${PROJECT_BINARY_DIR}/src_generated/ua_transport
                    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_namespace.py
                            ${CMAKE_CURRENT_SOURCE_DIR}/tools/schema/Custom.Opc.Ua.Transport.bsd)
 
@@ -181,8 +180,7 @@ if(CLIENT)
     # internal functions that are not exported to the shared lib.
 	add_executable(exampleClient $<TARGET_OBJECTS:open62541-objects> examples/opcuaClient.c)
     if(MULTITHREADING)
-        find_package(LibUV REQUIRED)
-        target_link_libraries(exampleClient urcu-cds urcu uv)
+        target_link_libraries(exampleClient urcu-cds urcu pthread)
     endif()
 endif()
 
@@ -190,20 +188,15 @@ endif()
 option(EXAMPLESERVER "Build a test server" OFF)
 if(EXAMPLESERVER)
 set(server_sources examples/opcuaServer.c
+                   examples/networklayer_tcp.c
                    examples/logger_stdout.c)
-if(NOT MULTITHREADING)
-    list(APPEND server_sources examples/networklayer_tcp.c)
-else()
-    list(APPEND server_sources examples/networklayer_tcp_concurrent.c)
-endif()
 add_executable(exampleServer ${server_sources} ${exported_headers} ${generated_headers})
 target_link_libraries(exampleServer open62541)
 if(WIN32)
     target_link_libraries(exampleServer ws2_32)
 endif(WIN32)
 if(MULTITHREADING)
-    find_package(LibUV REQUIRED)
-    target_link_libraries(exampleServer urcu-cds urcu uv)
+    target_link_libraries(exampleServer urcu-cds urcu pthread)
 endif()
 endif()
 

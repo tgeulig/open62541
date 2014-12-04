@@ -26,7 +26,10 @@ extern "C" {
 
 /**
  * @ingroup communication
- * @defgroup connection Connection */
+ * @defgroup connection Connection
+ *
+ * @{
+ */
 
 /** Used for zero-copy communication. The array of bytestrings is sent over the
    network as a single buffer. */
@@ -49,30 +52,25 @@ typedef struct UA_ConnectionConfig {
     UA_UInt32 maxChunkCount;
 } UA_ConnectionConfig;
 
-extern UA_EXPORT UA_ConnectionConfig UA_ConnectionConfig_standard;
+extern const UA_EXPORT UA_ConnectionConfig UA_ConnectionConfig_standard;
 
 /* Forward declaration */
 struct UA_SecureChannel;
 typedef struct UA_SecureChannel UA_SecureChannel;
 
-typedef void (*UA_Connection_writeCallback)(void *handle, const UA_ByteStringArray buf);
-typedef void (*UA_Connection_closeCallback)(void *handle);
+typedef void (*UA_Connection_writeCallback)(void *connection, const UA_ByteStringArray buf);
+typedef void (*UA_Connection_closeCallback)(void *connection);
 
 typedef struct UA_Connection {
     UA_ConnectionState  state;
     UA_ConnectionConfig localConf;
     UA_ConnectionConfig remoteConf;
     UA_SecureChannel   *channel;
-    void *callbackHandle;
     UA_Connection_writeCallback write;
     UA_Connection_closeCallback close;
 } UA_Connection;
 
-UA_StatusCode UA_EXPORT UA_Connection_init(UA_Connection *connection, UA_ConnectionConfig localConf, void *callbackHandle,
-                                         UA_Connection_closeCallback close, UA_Connection_writeCallback write);
-void UA_EXPORT UA_Connection_deleteMembers(UA_Connection *connection);
-
-// todo: closing a binaryconnection that was closed on the network level
+/** @} */
 
 #ifdef __cplusplus
 } // extern "C"

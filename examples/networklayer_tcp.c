@@ -12,6 +12,10 @@
 #define CLOSESOCKET(S) closesocket(S)
 #define IOCTLSOCKET ioctlsocket
 #else
+#include <sys/mman.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <sys/time.h>
 #include <sys/select.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -19,7 +23,7 @@
 #include <unistd.h> // read, write, close
 #define CLOSESOCKET(S) close(S)
 #define IOCTLSOCKET ioctl
-#endif /* WIN32 */
+#endif
 
 #include <stdlib.h> // exit
 #include <stdio.h>
@@ -27,76 +31,62 @@
 #include <memory.h> // memset
 #include <fcntl.h> // fcntl
 
-#include "ua_securechannel.h"
 #include "networklayer_tcp.h"
 
+struct Networklayer_TCP;
 typedef struct TCPConnection {
-	UA_Int32 sockfd;
 	UA_Connection connection;
+	UA_Int32 sockfd;
+	struct NetworkLayerTCP *layer;
 } TCPConnection;
 
-struct NetworklayerTCP {
+struct ConnectionEntry {
+    TCPConnection *connection;
+    UA_Int32 sockfd;
+};
+
+typedef struct NetworkLayerTCP {
 	UA_ConnectionConfig localConf;
 	UA_UInt32 port;
 	fd_set fdset;
 	UA_Int32 serversockfd;
 	UA_Int32 highestfd;
-	UA_UInt32 connectionsSize;
-	TCPConnection *connections;
-};
+    UA_Boolean recomputeFDSet;
+    UA_Int32 connectionsSize;
+    struct ConnectionEntry *connections;
+} NetworkLayerTCP;
 
-/** This structure is stored in the UA_Connection for callbacks into the
-	network layer. */
-typedef struct TCPConnectionHandle {
-	UA_Int32 sockfd;
-	NetworklayerTCP *layer;
-} TCPConnectionHandle;
+void closeCallback(TCPConnection *handle);
+void writeCallback(TCPConnection *handle, UA_ByteStringArray gather_buf);
 
-NetworklayerTCP *NetworklayerTCP_new(UA_ConnectionConfig localConf, UA_UInt32 port) {
-    NetworklayerTCP *newlayer = malloc(sizeof(NetworklayerTCP));
-    if(newlayer == NULL)
-        return NULL;
-	newlayer->localConf = localConf;
-	newlayer->port = port;
-	newlayer->connectionsSize = 0;
-	newlayer->connections = NULL;
-	return newlayer;
-}
-
-void NetworklayerTCP_delete(NetworklayerTCP *layer) {
-	for(UA_UInt32 index = 0;index < layer->connectionsSize;index++) {
-		shutdown(layer->connections[index].sockfd, 2);
-        if(layer->connections[index].connection.channel)
-            layer->connections[index].connection.channel->connection = NULL;
-        UA_Connection_deleteMembers(&layer->connections[index].connection);
-		CLOSESOCKET(layer->connections[index].sockfd);
-	}
-	free(layer->connections);
-	free(layer);
-}
-
-void closeCallback(TCPConnectionHandle *handle);
-void writeCallback(TCPConnectionHandle *handle, UA_ByteStringArray gather_buf);
-
-static UA_StatusCode NetworklayerTCP_add(NetworklayerTCP *layer, UA_Int32 newsockfd) {
-    layer->connectionsSize++;
-	layer->connections = realloc(layer->connections, sizeof(TCPConnection) * layer->connectionsSize);
-	TCPConnection *newconnection = &layer->connections[layer->connectionsSize-1];
-	newconnection->sockfd = newsockfd;
-
-	struct TCPConnectionHandle *callbackhandle;
-    if(!(callbackhandle = malloc(sizeof(struct TCPConnectionHandle))))
+static UA_StatusCode NetworkLayerTCP_add(NetworkLayerTCP *layer, UA_Int32 newsockfd) {
+    TCPConnection *c;
+    if(!(c = malloc(sizeof(TCPConnection))))
         return UA_STATUSCODE_BADOUTOFMEMORY;
-    callbackhandle->layer = layer;
-	callbackhandle->sockfd = newsockfd;
-	UA_Connection_init(&newconnection->connection, layer->localConf, callbackhandle,
-					   (UA_Connection_closeCallback)closeCallback, (UA_Connection_writeCallback)writeCallback);
+
+	c->sockfd = newsockfd;
+    c->layer = layer;
+    c->connection.state = UA_CONNECTION_OPENING;
+    c->connection.localConf = layer->localConf;
+    c->connection.channel = UA_NULL;
+    c->connection.close = close;
+    c->connection.write = write;
+
+    layer->connections = realloc(layer->connections, sizeof(struct ConnectionEntry) * (layer->connectionsSize+1));
+    if(!layer->connections) {
+        free(c);
+        return UA_STATUSCODE_BADOUTOFMEMORY;
+    }
+        
+    layer->connections[layer->connectionsSize].connection = c;
+    layer->connections[layer->connectionsSize].sockfd = newsockfd;
+    layer->connectionsSize++;
 	return UA_STATUSCODE_GOOD;
 }
 
 // copy the array of connections, but _loose_ one. This does not close the
 // actual socket.
-static UA_StatusCode NetworklayerTCP_remove(NetworklayerTCP *layer, UA_Int32 sockfd) {
+static UA_StatusCode NetworkLayerTCP_remove(NetworkLayerTCP *layer, UA_Int32 sockfd) {
 	UA_UInt32 index;
 	for(index = 0;index < layer->connectionsSize;index++) {
 		if(layer->connections[index].sockfd == sockfd)
@@ -106,31 +96,30 @@ static UA_StatusCode NetworklayerTCP_remove(NetworklayerTCP *layer, UA_Int32 soc
     if(index == layer->connectionsSize)
         return UA_STATUSCODE_BADINTERNALERROR;
 
-    if(layer->connections[index].connection.channel)
-        layer->connections[index].connection.channel->connection = NULL;
-
-	UA_Connection_deleteMembers(&layer->connections[index].connection);
-
     layer->connectionsSize--;
-	TCPConnection *newconnections;
-    newconnections = malloc(sizeof(TCPConnection) * layer->connectionsSize);
-	memcpy(newconnections, layer->connections, sizeof(TCPConnection) * index);
+	struct ConnectionEntry *newconnections = malloc(sizeof(struct ConnectionEntry) * layer->connectionsSize);
+
+    if(!newconnections)
+        return UA_STATUSCODE_BADOUTOFMEMORY;
+
+	memcpy(newconnections, layer->connections, sizeof(struct ConnectionEntry) * index);
 	memcpy(&newconnections[index], &layer->connections[index+1],
-           sizeof(TCPConnection) * (layer->connectionsSize - index));
+           sizeof(struct ConnectionEntry) * (layer->connectionsSize - index));
     free(layer->connections);
 	layer->connections = newconnections;
 	return UA_STATUSCODE_GOOD;
 }
 
 /** Callback function */
-void closeCallback(TCPConnectionHandle *handle) {
+void closeCallback(TCPConnection *handle) {
 	shutdown(handle->sockfd,2);
 	CLOSESOCKET(handle->sockfd);
-	NetworklayerTCP_remove(handle->layer, handle->sockfd);
+    // the connectionentry is removed by the main thread when select indicates a closed function
+    // NetworkLayerTCP_remove(handle->layer, handle->sockfd);
 }
 
 /** Callback function */
-void writeCallback(TCPConnectionHandle *handle, UA_ByteStringArray gather_buf) {
+void writeCallback(TCPConnection *handle, UA_ByteStringArray gather_buf) {
 	UA_UInt32 total_len = 0;
 	UA_UInt32 nWritten = 0;
 #ifdef WIN32
@@ -153,8 +142,8 @@ void writeCallback(TCPConnectionHandle *handle, UA_ByteStringArray gather_buf) {
 #else
 	struct iovec iov[gather_buf.stringsSize];
 	for(UA_UInt32 i=0;i<gather_buf.stringsSize;i++) {
-		iov[i].iov_base = gather_buf.strings[i].data;
-		iov[i].iov_len = gather_buf.strings[i].length;
+		iov[i] = {.iov_base = gather_buf.strings[i].data,
+                  .iov_len = gather_buf.strings[i].length};
 		total_len += gather_buf.strings[i].length;
 	}
 	struct msghdr message = {.msg_name = NULL, .msg_namelen = 0, .msg_iov = iov,
@@ -163,8 +152,8 @@ void writeCallback(TCPConnectionHandle *handle, UA_ByteStringArray gather_buf) {
 	while (nWritten < total_len) {
 		UA_Int32 n = 0;
 		do {
-			n = sendmsg(handle->sockfd, &message, 0);
-		} while (n == -1L && errno == EINTR);
+            n = sendmsg(handle->sockfd, &message, 0);
+        } while (n == -1L && errno == EINTR);
 
 		if (n >= 0) {
 			// TODO: handle incompletely send messages
@@ -183,73 +172,18 @@ void writeCallback(TCPConnectionHandle *handle, UA_ByteStringArray gather_buf) {
 static UA_StatusCode setNonBlocking(int sockid) {
 #ifdef WIN32
 	u_long iMode = 1;
-	int opts = IOCTLSOCKET(sockid, FIONBIO, &iMode);
-	if (opts != NO_ERROR){
-		printf("ioctlsocket failed with error: %ld\n", opts);
+	if (IOCTLSOCKET(sockid, FIONBIO, &iMode) != NO_ERROR)
 		return UA_STATUSCODE_BADINTERNALERROR;
-	}
-	return UA_STATUSCODE_GOOD;
 #else
 	int opts = fcntl(sockid,F_GETFL);
-	if (opts < 0) {
-		perror("fcntl(F_GETFL)");
+	if (opts < 0 || fcntl(sockid,F_SETFL,opts|O_NONBLOCK) < 0)
 		return UA_STATUSCODE_BADINTERNALERROR;
-	}
-	opts = (opts | O_NONBLOCK);
-	if (fcntl(sockid,F_SETFL,opts) < 0) {
-		perror("fcntl(F_SETFL)");
-		return UA_STATUSCODE_BADINTERNALERROR;
-	}
+#endif
 	return UA_STATUSCODE_GOOD;
-#endif
-}
-
-void readConnection(NetworklayerTCP *layer, UA_Server *server, TCPConnection *entry) {
-	UA_ByteString readBuffer;
-    readBuffer.data = malloc(layer->localConf.recvBufferSize);
-#ifdef WIN32
-	readBuffer.length = recv(entry->sockfd, (char *)readBuffer.data,
-							 layer->localConf.recvBufferSize, 0);
-#else
-	readBuffer.length = read(entry->sockfd, readBuffer.data, layer->localConf.recvBufferSize);
-#endif
-	if (errno != 0) {
-		shutdown(entry->sockfd,2);
-		CLOSESOCKET(entry->sockfd);
-		NetworklayerTCP_remove(layer, entry->sockfd);
-	} else {
-		if(readBuffer.length>0){ //data received to process?
-			UA_Server_processBinaryMessage(server, &entry->connection, &readBuffer);
-		}
-	}
-    readBuffer.length = layer->localConf.recvBufferSize; // because this was malloc'd. Length=0 would lead to errors.
-	UA_ByteString_deleteMembers(&readBuffer);
-}
-
-void worksocks(NetworklayerTCP *layer, UA_Server *server, UA_UInt32 workamount) {
-	// accept new connections
-	if(FD_ISSET(layer->serversockfd,&layer->fdset)) {
-		struct sockaddr_in cli_addr;
-		socklen_t cli_len = sizeof(cli_addr);
-		int newsockfd = accept(layer->serversockfd, (struct sockaddr *) &cli_addr, &cli_len);
-		if (newsockfd >= 0) {
-			setNonBlocking(newsockfd);
-			NetworklayerTCP_add(layer, newsockfd);
-		}
-		workamount--;
-	}
-
-	// read from established sockets
-	for(UA_UInt32 i=0;i<layer->connectionsSize && workamount > 0;i++) {
-		if(FD_ISSET(layer->connections[i].sockfd, &layer->fdset)) {
-			readConnection(layer, server, &layer->connections[i]);
-			workamount--;
-		}
-	}
 }
 
 // after every select, reset the set of sockets we want to listen on
-void setFDSet(NetworklayerTCP *layer) {
+static void setFDSet(NetworkLayerTCP *layer) {
 	FD_ZERO(&layer->fdset);
 	FD_SET(layer->serversockfd, &layer->fdset);
 	layer->highestfd = layer->serversockfd;
@@ -258,11 +192,20 @@ void setFDSet(NetworklayerTCP *layer) {
 		if(layer->connections[i].sockfd > layer->highestfd)
 			layer->highestfd = layer->connections[i].sockfd;
 	}
-    layer->highestfd++;
 }
 
-UA_StatusCode NetworkLayerTCP_run(NetworklayerTCP *layer, UA_Server *server, struct timeval tv,
-                                  void(*worker)(UA_Server*), UA_Boolean *running) {
+void NetworkLayerTCP_delete(NetworkLayerTCP *layer);
+UA_WorkItemList NetworkLayerTCP_getWorkItems(NetworkLayerTCP * layer);
+
+UA_NetworkLayer * NetworkLayerTCP_new(UA_ConnectionConfig localConf, UA_UInt32 port) {
+    NetworkLayerTCP *layer = malloc(sizeof(NetworkLayerTCP));
+    if(layer == NULL)
+        return NULL;
+	layer->localConf = localConf;
+	layer->port = port;
+	layer->connectionsSize = 0;
+	layer->connections = NULL;
+
 #ifdef WIN32
 	WORD wVersionRequested;
 	WSADATA wsaData;
@@ -270,14 +213,15 @@ UA_StatusCode NetworkLayerTCP_run(NetworklayerTCP *layer, UA_Server *server, str
 	WSAStartup(wVersionRequested, &wsaData);
 	if((layer->serversockfd = socket(PF_INET, SOCK_STREAM,0)) == INVALID_SOCKET) {
 		printf("ERROR opening socket, code: %d\n", WSAGetLastError());
-		return UA_STATUSCODE_BADINTERNALERROR;
+		return NULL;
 	}
 #else
     if((layer->serversockfd = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
 		perror("ERROR opening socket");
-		return UA_STATUSCODE_BADINTERNALERROR;
+		return NULL;
 	} 
 #endif
+
 	struct sockaddr_in serv_addr;
 	memset((void *)&serv_addr, sizeof(serv_addr), 1);
 	serv_addr.sin_family = AF_INET;
@@ -285,58 +229,102 @@ UA_StatusCode NetworkLayerTCP_run(NetworklayerTCP *layer, UA_Server *server, str
 	serv_addr.sin_port = htons(layer->port);
 
 	int optval = 1;
-	if(setsockopt(layer->serversockfd, SOL_SOCKET, SO_REUSEADDR, (const char *)&optval, sizeof(optval)) == -1) {
+	if(setsockopt(layer->serversockfd, SOL_SOCKET, SO_REUSEADDR, (const char *)&optval,
+                  sizeof(optval)) == -1) {
 		perror("setsockopt");
 		CLOSESOCKET(layer->serversockfd);
-		return UA_STATUSCODE_BADINTERNALERROR;
+		return NULL;
 	}
 		
 	if(bind(layer->serversockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
 		perror("binding");
 		CLOSESOCKET(layer->serversockfd);
-		return UA_STATUSCODE_BADINTERNALERROR;
+		return NULL;
 	}
 
-#define MAXBACKLOG 10
+#define MAXBACKLOG 100
 	setNonBlocking(layer->serversockfd);
 	listen(layer->serversockfd, MAXBACKLOG);
 
-	while (*running) {
-		setFDSet(layer);
-		struct timeval tmptv = tv;
-		UA_Int32 resultsize = select(layer->highestfd, &layer->fdset, NULL, NULL, &tmptv);
-		if (resultsize <= 0) {
-#ifdef WIN32
-			UA_Int32 err = (resultsize == SOCKET_ERROR) ? WSAGetLastError() : 0;
-			switch (err) {
-			case WSANOTINITIALISED:
-			case WSAEFAULT:
-			case WSAENETDOWN:
-			case WSAEINVAL:
-			case WSAEINTR:
-			case WSAEINPROGRESS:
-			case WSAENOTSOCK:
-#else
-			UA_Int32 err = errno;
-			switch (err) {
-			case EBADF:
-			case EINTR:
-			case EINVAL:
-#endif
-				// todo: handle errors
-				printf("UA_Stack_msgLoop - result=%d, errno={%d,%s}\n", resultsize, errno, strerror(errno));
-				break;
-			default:
-				// timeout
-				worker(server);
-			}
-		} else { // activity on listener or client socket
-			worksocks(layer, server, resultsize);
-			worker(server);
-		}
+    UA_NetworkLayer *nl = malloc(sizeof(UA_NetworkLayer));
+    if(!nl)
+        return NULL;
+    nl->networkLayerHandle = layer;
+    nl->getWorkItems = (UA_WorkItemList (*)(void*)) NetworkLayerTCP_getWorkItems;
+    nl->delete = (void (*)(void*))NetworkLayerTCP_delete;
+    return nl;
+}
+
+// send all open connections to the server to delete them before!!
+void NetworkLayerTCP_delete(NetworkLayerTCP *layer) {
+	for(UA_UInt32 index = 0;index < layer->connectionsSize;index++) {
+		shutdown(layer->connections[index].sockfd, 2);
+		CLOSESOCKET(layer->connections[index].sockfd);
 	}
+	free(layer->connections);
+	free(layer);
 #ifdef WIN32
 	WSACleanup();
 #endif
-	return UA_STATUSCODE_GOOD;
+}
+
+UA_WorkItemList NetworkLayerTCP_getWorkItems(NetworkLayerTCP * layer) {
+    setFDSet(layer);
+    struct timeval tmptv = {0, 0}; // don't wait
+    UA_Int32 resultsize = select(layer->highestfd+1, &layer->fdset, NULL, NULL, &tmptv);
+    if (resultsize <= 0)
+        return (UA_WorkItemList){.workItemsSize = 0, .workItems = NULL}; // todo: error handling
+        
+	// accept new connections (can only be a single one)
+	if(FD_ISSET(layer->serversockfd,&layer->fdset)) {
+		struct sockaddr_in cli_addr;
+		socklen_t cli_len = sizeof(cli_addr);
+		int newsockfd = accept(layer->serversockfd, (struct sockaddr *) &cli_addr, &cli_len);
+		if (newsockfd >= 0) {
+			setNonBlocking(newsockfd);
+			NetworkLayerTCP_add(layer, newsockfd);
+		}
+		resultsize--;
+	}
+
+    if(resultsize <= 0)
+        return (UA_WorkItemList){.workItemsSize = 0, .workItems = NULL}; // todo: error handling
+
+    UA_WorkItem *items = malloc(sizeof(UA_WorkItem)*resultsize);
+
+	// read from established sockets
+    UA_Int32 j=0;
+    UA_ByteString buf = {-1, NULL};
+	for(UA_UInt32 i=0;i<layer->connectionsSize && j<resultsize;i++) {
+		if(FD_ISSET(layer->connections[i].sockfd, &layer->fdset)) {
+            if(buf.data == NULL)
+                buf.data = malloc(layer->localConf.recvBufferSize);
+#ifdef WIN32
+            buf.length = recv(layer->connections[i].connection.sockfd, (char *)buf.data,
+                              layer->localConf.recvBufferSize, 0);
+#else
+            buf.length = read(layer->connections[i].sockfd, buf.data,
+                              layer->localConf.recvBufferSize);
+#endif
+            if (errno != 0) {
+                items[j].workItemType = UA_WORKITEMTYPE_NETWORKCLOSED;
+                // FIXME: the location of the connection could change
+                items[j].item.networkClose.connection = layer->connections[i].connection;
+                j++;
+                continue;
+            }
+
+            items[j].workItemType = UA_WORKITEMTYPE_NETWORKMESSAGE;
+            items[j].item.networkMessage.message = buf;
+            // FIXME: the location of the connection could change
+            items[j].item.networkMessage.connection = layer->connections[i].connection;
+            j++;
+            buf.data = NULL;
+        }
+    }
+
+    if(buf.data != NULL)
+        free(buf.data);
+
+    return (UA_WorkItemList){.workItemsSize = resultsize, .workItems = items};
 }
