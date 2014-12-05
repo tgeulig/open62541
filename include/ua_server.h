@@ -56,10 +56,10 @@ UA_StatusCode UA_EXPORT UA_Server_addReference(UA_Server *server, const UA_AddRe
  *
  * The value must lie on the heap and must not be reused after adding it, as it
  * becomes attached to the lifecycle of the VariableNode. */
-void UA_EXPORT UA_Server_addScalarVariable(UA_Server *server, UA_QualifiedName *browseName,
-                                           void *value, const UA_TypeVTable *vt,
-                                           const UA_ExpandedNodeId *parentNodeId,
-                                           const UA_NodeId *referenceTypeId );
+void UA_EXPORT UA_Server_addScalarVariableNode(UA_Server *server, UA_QualifiedName *browseName,
+                                               void *value, const UA_TypeVTable *vt,
+                                               const UA_ExpandedNodeId *parentNodeId,
+                                               const UA_NodeId *referenceTypeId );
 
 /**
  * @defgroup dispatch Dispatch Queue
@@ -102,7 +102,7 @@ typedef struct UA_WorkItem {
  * layer does not need to be thread-safe.
  */
 typedef struct {
-    void *networkLayerHandle; ///< Internal data of the network layer
+    void *nlhandle; ///< Internal data of the network layer
 
     /**
      * Gets called from the main server loop and returns the work that
@@ -115,7 +115,7 @@ typedef struct {
      * @return The size of the returned workItems array. If the result is
      * negative, an error has occured.
      */
-    UA_Int32 (*getWork)(void *networkLayerHandle, UA_WorkItem **workItems);
+    UA_Int32 (*getWork)(void *nlhandle, UA_WorkItem **workItems);
 
     /**
      * Closes the network connection and returns all the work that needs to
@@ -126,10 +126,10 @@ typedef struct {
      * @return The size of the returned workItems array. If the result is
      * negative, an error has occured.
      */
-    UA_Int32 (*shutdown)(void *networkLayerHandle, UA_WorkItem **workItems);
+    UA_Int32 (*shutdown)(void *nlhandle, UA_WorkItem **workItems);
 
     /** Deletes the network layer. Call only after a successfull shutdown. */
-    void (*delete)(void *networkLayerHandle);
+    void (*delete)(void *nlhandle);
 } UA_NetworkLayer;
 
 /**

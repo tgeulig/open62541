@@ -1,7 +1,7 @@
 #include "ua_server_internal.h"
 
-void processWork(UA_Server *server, const UA_WorkItem *items, UA_UInt32 itemsSize) {
-    for(UA_UInt32 i=0;i<itemsSize;i++) {
+void processWork(UA_Server *server, const UA_WorkItem *items, UA_Int32 itemsSize) {
+    for(UA_Int32 i=0;i<itemsSize;i++) {
         const UA_WorkItem *item = &items[i];
         switch(item->type) {
         case UA_WORKITEMTYPE_BINARYNETWORKMESSAGE:
@@ -11,7 +11,9 @@ void processWork(UA_Server *server, const UA_WorkItem *items, UA_UInt32 itemsSiz
             break;
         case UA_WORKITEMTYPE_BINARYNETWORKCLOSED:
             // todo: internal cleanup in the server.
-            item->item.binaryNetworkClose.connection->channel->connection = UA_NULL; // remove the connection from the securechannel.
+            if(item->item.binaryNetworkMessage.connection->channel)
+                // remove the connection from the securechannel.
+                item->item.binaryNetworkClose.connection->channel->connection = UA_NULL;
             UA_free(item->item.binaryNetworkClose.connection);
             break;
         case UA_WORKITEMTYPE_METHODCALL:

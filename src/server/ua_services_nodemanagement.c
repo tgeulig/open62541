@@ -3,7 +3,6 @@
 #include "ua_namespace_0.h"
 #include "ua_statuscodes.h"
 #include "ua_nodestore.h"
-#include "ua_services_internal.h"
 #include "ua_session.h"
 #include "ua_util.h"
 

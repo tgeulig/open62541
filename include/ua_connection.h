@@ -58,16 +58,13 @@ extern const UA_EXPORT UA_ConnectionConfig UA_ConnectionConfig_standard;
 struct UA_SecureChannel;
 typedef struct UA_SecureChannel UA_SecureChannel;
 
-typedef void (*UA_Connection_writeCallback)(void *connection, const UA_ByteStringArray buf);
-typedef void (*UA_Connection_closeCallback)(void *connection);
-
 typedef struct UA_Connection {
     UA_ConnectionState  state;
     UA_ConnectionConfig localConf;
     UA_ConnectionConfig remoteConf;
     UA_SecureChannel   *channel;
-    UA_Connection_writeCallback write;
-    UA_Connection_closeCallback close;
+    void (*write)(void *connection, UA_ByteStringArray buf);
+    void (*close)(void *connection);
 } UA_Connection;
 
 /** @} */

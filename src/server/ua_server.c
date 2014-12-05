@@ -1,5 +1,4 @@
 #include "ua_server_internal.h"
-#include "ua_services_internal.h" // AddReferences
 #include "ua_namespace_0.h"
 #include "ua_securechannel_manager.h"
 #include "ua_session_manager.h"
@@ -70,18 +69,21 @@ UA_StatusCode UA_Server_run(UA_Server *server, UA_UInt32 nThreads, UA_Boolean *r
         // Check if messages have arrived and handle them.
         for(UA_Int32 i=0;i<server->nlsSize;i++) {
             UA_NetworkLayer *nl = &server->nls[i];
-            UA_WorkItem *workArray;
-            UA_UInt32 workArraySize = nl->getWork(nl->networkLayerHandle, &workArray);
+            UA_WorkItem *work;
+            UA_Int32 workSize = nl->getWork(nl->nlhandle, &work);
+            if(workSize<=0)
+                continue;
             #ifdef MULTITHREADING
             struct workListNode *wln = UA_alloc(sizeof(struct workListNode));
             if(!wln) {
                 // todo: error handling
             }
-            *wln = {.workSize = workArraySize, .work = workArray};
+            *wln = {.workSize = workSize, .work = work};
             cds_wfq_node_init(&wln->node);
             cds_wfq_enqueue(&server->dispatchQueue, &wln->node);
             #else
-            processWork(server, workArray, workArraySize);
+            processWork(server, work, workSize);
+            UA_free(work);
             #endif
         }
 
@@ -103,6 +105,13 @@ UA_StatusCode UA_Server_run(UA_Server *server, UA_UInt32 nThreads, UA_Boolean *r
 }
 
 void UA_Server_delete(UA_Server *server) {
+    // todo: shutdown the network layers
+    // todo: empty and delete the dispatchQueue
+    for(UA_Int32 i=0;i<server->nlsSize;i++) {
+        server->nls[i].delete(server->nls[i].nlhandle);
+    }
+    UA_free(server->nls);
+    
     UA_ApplicationDescription_deleteMembers(&server->description);
     UA_SecureChannelManager_deleteMembers(&server->secureChannelManager);
     UA_SessionManager_deleteMembers(&server->sessionManager);
@@ -110,7 +119,6 @@ void UA_Server_delete(UA_Server *server) {
     UA_ByteString_deleteMembers(&server->serverCertificate);
     UA_Array_delete(server->endpointDescriptions, server->endpointDescriptionsSize,
                     &UA_TYPES[UA_ENDPOINTDESCRIPTION]);
-    // todo: empty and delete the dispatchQueue
     UA_free(server);
 }
 
@@ -122,6 +130,10 @@ UA_Server * UA_Server_new(UA_String *endpointUrl, UA_ByteString *serverCertifica
 #ifdef MULTITHREADING
     cds_wfq_init(&server->dispatchQueue);
 #endif
+
+    // networklayers
+    server->nls = UA_NULL;
+    server->nlsSize = 0;
         
     // mockup application description
     UA_ApplicationDescription_init(&server->description);
