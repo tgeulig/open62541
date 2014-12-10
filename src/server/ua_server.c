@@ -43,67 +43,6 @@ void UA_Server_addNetworkLayer(UA_Server *server, UA_NetworkLayer *networkLayer)
 /* Server */
 /**********/
 
-/* The timed event and repeated event are only relevant for the main thread, not
-   the workers. */
-typedef struct UA_TimedEvent {
-    UA_WorkItem workItem;
-    UA_DateTime time;
-} UA_TimedEvent;
-
-typedef struct UA_RepeatedEvent {
-    UA_TimedEvent next;
-    UA_UInt32 interval; // in 100ns resolution
-} UA_RepeatedEvent;
-
-UA_StatusCode UA_Server_run(UA_Server *server, UA_UInt32 nThreads, UA_Boolean *running) {
-#ifdef MULTITHREADING
-    server->running = running;
-    rcu_register_thread();
-    pthread_t *thr = UA_alloca(nThreads * sizeof(pthread_t));
-    for(UA_UInt32 i=0;i<nThreads;i++)
-        pthread_create(&thr[i], UA_NULL, (void* (*)(void*))runWorkerLoop, server);
-#endif
-    UA_StatusCode retval = UA_STATUSCODE_GOOD;
-
-    while(*running) {
-        // Check if messages have arrived and handle them.
-        for(UA_Int32 i=0;i<server->nlsSize;i++) {
-            UA_NetworkLayer *nl = &server->nls[i];
-            UA_WorkItem *work;
-            UA_Int32 workSize = nl->getWork(nl->nlhandle, &work);
-            if(workSize<=0)
-                continue;
-            #ifdef MULTITHREADING
-            struct workListNode *wln = UA_alloc(sizeof(struct workListNode));
-            if(!wln) {
-                // todo: error handling
-            }
-            *wln = {.workSize = workSize, .work = work};
-            cds_wfq_node_init(&wln->node);
-            cds_wfq_enqueue(&server->dispatchQueue, &wln->node);
-            #else
-            processWork(server, work, workSize);
-            UA_free(work);
-            #endif
-        }
-
-        // Check if timeouts for events have been triggered and handle them.
-        // Also find the delay until the next event is due.
-
-        // exit if something went horribly wrong
-        if(retval)
-            break;
-
-        // sleep if nothing happened in this iteration
-    }
-#ifdef MULTITHREADING
-    for(UA_UInt32 i=0;i<nThreads;i++)
-        pthread_join(thr[i], UA_NULL);
-    rcu_unregister_thread();
-#endif
-    return retval;
-}
-
 void UA_Server_delete(UA_Server *server) {
     // todo: shutdown the network layers
     // todo: empty and delete the dispatchQueue

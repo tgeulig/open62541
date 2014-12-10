@@ -13,6 +13,8 @@ import argparse
 # Utility functions #
 #####################
 
+print(sys.argv)
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--export-prototypes', action='store_true', help='make the prototypes (init, delete, copy, ..) of generated types visible for users of the library')
 parser.add_argument('--with-xml', action='store_true', help='generate xml encoding')
@@ -88,6 +90,15 @@ def printableStructuredType(element):
                 return False
     return True
 
+def printPrototypes(name):
+    if args.export_prototypes:
+        printh("UA_TYPE_PROTOTYPES(%(name)s)")
+    else:
+        printh("UA_TYPE_PROTOTYPES_NOEXPORT(%(name)s)")
+    printh("UA_TYPE_BINARY_ENCODING(%(name)s)")
+    if args.with_xml:
+        printh("UA_TYPE_XML_ENCODING(%(name)s)")
+
 def createEnumerated(element):	
     valuemap = OrderedDict()
     name = "UA_" + element.get("Name")
@@ -103,11 +114,7 @@ def createEnumerated(element):
     printh("typedef enum { \n\t" +
            ",\n\t".join(map(lambda (key, value) : key.upper() + " = " + value, valuemap.iteritems())) +
            "\n} " + name + ";")
-    if args.export_prototypes:
-        printh("UA_TYPE_PROTOTYPES(" + name + ")")
-    else:
-        printh("UA_TYPE_PROTOTYPES_NOEXPORT(" + name + ")")
-    printh("UA_TYPE_BINARY_ENCODING(" + name + ")")
+    printPrototypes(name)
     printc("UA_TYPE_AS(" + name + ", UA_Int32)")
     printc("UA_TYPE_BINARY_ENCODING_AS(" + name + ", UA_Int32)")
     if args.with_xml:
@@ -123,12 +130,10 @@ def createOpaque(element):
         if child.tag == "{http://opcfoundation.org/BinarySchema/}Documentation":
             printh("/** @brief " + child.text + " */")
     printh("typedef UA_ByteString %(name)s;")
-    printh("UA_TYPE_PROTOTYPES(%(name)s)")
-    printh("UA_TYPE_BINARY_ENCODING(%(name)s)")
+    printPrototypes(name)
     printc("UA_TYPE_AS(%(name)s, UA_ByteString)")
     printc("UA_TYPE_BINARY_ENCODING_AS(%(name)s, UA_ByteString)")
     if args.with_xml:
-        printh("UA_TYPE_XML_ENCODING(" + name + ")\n")
         printc('''UA_TYPE_METHOD_CALCSIZEXML_NOTIMPL(%(name)s)
 UA_TYPE_METHOD_ENCODEXML_NOTIMPL(%(name)s)
 UA_TYPE_METHOD_DECODEXML_NOTIMPL(%(name)s)\n''')
@@ -182,10 +187,7 @@ def createStructured(element):
         printh("typedef void* %(name)s;")
         
     # 3) function prototypes
-    printh("UA_TYPE_PROTOTYPES(" + name + ")")
-    printh("UA_TYPE_BINARY_ENCODING(" + name + ")")
-    if args.with_xml:
-        printh("UA_TYPE_XML_ENCODING(" + name + ")\n")
+    printPrototypes(name)
 
     # 4) CalcSizeBinary
     printc('''UA_UInt32 %(name)s_calcSizeBinary(%(name)s const * ptr) {

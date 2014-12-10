@@ -10,25 +10,15 @@
 #include <Windows.h>
 #include <ws2tcpip.h>
 #define CLOSESOCKET(S) closesocket(S)
-#define IOCTLSOCKET ioctlsocket
 #else
-#include <sys/mman.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#include <sys/time.h>
 #include <sys/select.h> 
-#include <sys/socket.h>
 #include <netinet/in.h>
-#include <sys/socketvar.h>
 #include <unistd.h> // read, write, close
 #define CLOSESOCKET(S) close(S)
-#define IOCTLSOCKET ioctl
 #endif
 
-#include <stdlib.h> // exit
 #include <stdio.h>
 #include <errno.h> // errno, EINTR
-#include <memory.h> // memset
 #include <fcntl.h> // fcntl
 
 #include "networklayer_tcp.h"
@@ -115,8 +105,7 @@ void closeCallback(TCPConnection *handle) {
 }
 
 void writeCallback(TCPConnection *handle, UA_ByteStringArray gather_buf) {
-	UA_UInt32 total_len = 0;
-	UA_UInt32 nWritten = 0;
+	UA_UInt32 total_len = 0, nWritten = 0;
 #ifdef WIN32
 	LPWSABUF buf = _alloca(gather_buf.stringsSize * sizeof(WSABUF));
 	int result = 0;
@@ -168,7 +157,7 @@ void writeCallback(TCPConnection *handle, UA_ByteStringArray gather_buf) {
 static UA_StatusCode setNonBlocking(int sockid) {
 #ifdef WIN32
 	u_long iMode = 1;
-	if(IOCTLSOCKET(sockid, FIONBIO, &iMode) != NO_ERROR)
+	if(ioctlsocket(sockid, FIONBIO, &iMode) != NO_ERROR)
 		return UA_STATUSCODE_BADINTERNALERROR;
 #else
 	int opts = fcntl(sockid,F_GETFL);
@@ -305,7 +294,7 @@ UA_Int32 NetworkLayerTCP_getWork(NetworkLayerTCP * layer, UA_WorkItem **workItem
 #endif
             if (errno != 0) {
                 items[j].type = UA_WORKITEMTYPE_BINARYNETWORKCLOSED;
-                items[j].item.binaryNetworkClose.connection = (UA_Connection*)layer->conns[i].connection;
+                items[j].item.binaryNetworkClose = (UA_Connection*)layer->conns[i].connection;
                 j++;
                 continue;
             }

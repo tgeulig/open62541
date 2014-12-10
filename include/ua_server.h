@@ -75,20 +75,21 @@ typedef struct UA_WorkItem {
     enum {
         UA_WORKITEMTYPE_BINARYNETWORKMESSAGE,
         UA_WORKITEMTYPE_BINARYNETWORKCLOSED,
-        UA_WORKITEMTYPE_METHODCALL
+        UA_WORKITEMTYPE_METHODCALL,
+        UA_WORKITEMTYPE_DELAYEDFREE
     } type; ///< Type of the WorkItem
     union {
         struct {
             UA_Connection *connection;
             UA_ByteString message;
         } binaryNetworkMessage; ///< A message was received
-        struct {
-            UA_Connection *connection;
-        } binaryNetworkClose; ///< A connection has been closed (internal or remotely)
+        UA_Connection * binaryNetworkClose; ///< A connection has been closed (internal or remotely). Clean up internally
         struct {
             void * data;
             void (*method)(UA_Server *server, void *data);
-        } methodCall; ///< Just call the function with an opaque data pointer
+        } methodCall; ///< Call the function with the data pointer from a worker thread
+        void *delayedFree; ///< Data is obsolete. But other worker threads might still use it. Free the data as soon as
+                           /// all current workItems are finished.
     } item;
 } UA_WorkItem;
 

@@ -282,7 +282,7 @@ typedef void UA_InvalidType;
 #define PRINTTYPE(TYPE)
 #define PRINTTYPE_NOEXPORT(TYPE)
 #endif
-    
+
 #define UA_TYPE_PROTOTYPES(TYPE)                                     \
     TYPE UA_EXPORT * TYPE##_new();                                   \
     void UA_EXPORT TYPE##_init(TYPE * p);                            \
@@ -291,6 +291,14 @@ typedef void UA_InvalidType;
     UA_StatusCode UA_EXPORT TYPE##_copy(const TYPE *src, TYPE *dst); \
     PRINTTYPE(TYPE)
 
+/* #define UA_TYPE_PROTOTYPES_INTEGRAL(TYPE)                            \ */
+/*     TYPE UA_EXPORT * TYPE##_new();                                   \ */
+/*     void UA_EXPORT TYPE##_init(TYPE * p);                            \ */
+/*     #define TYPE##_delete UA_free                                    \ */
+/*     #define TYPE##_deleteMembers do{}while(UA_FALSE)                 \ */
+/*     UA_StatusCode UA_EXPORT TYPE##_copy(const TYPE *src, TYPE *dst); \ */
+/*     PRINTTYPE(TYPE) */
+
 #define UA_TYPE_PROTOTYPES_NOEXPORT(TYPE)                            \
     TYPE * TYPE##_new();                                             \
     void TYPE##_init(TYPE * p);                                      \
@@ -298,6 +306,14 @@ typedef void UA_InvalidType;
     void TYPE##_deleteMembers(TYPE * p);                             \
     UA_StatusCode TYPE##_copy(const TYPE *src, TYPE *dst);           \
     PRINTTYPE_NOEXPORT(TYPE)
+
+/* #define UA_TYPE_PROTOTYPES_INTEGRAL_NOEXPORT(TYPE)                   \ */
+/*     TYPE * TYPE##_new();                                             \ */
+/*     void TYPE##_init(TYPE * p);                                      \ */
+/*     #define TYPE##_delete UA_free                                    \ */
+/*     #define TYPE##_deleteMembers do{}while(UA_FALSE)                 \ */
+/*     UA_StatusCode TYPE##_copy(const TYPE *src, TYPE *dst);       \ */
+/*     PRINTTYPE_NOEXPORT(TYPE) */
 
 /* Functions for all types */
 UA_TYPE_PROTOTYPES(UA_Boolean)
@@ -364,6 +380,7 @@ UA_StatusCode UA_EXPORT UA_DateTime_toString(UA_DateTime time, UA_String *timeSt
 
 /* Guid */
 UA_Boolean UA_EXPORT UA_Guid_equal(const UA_Guid *g1, const UA_Guid *g2);
+UA_Guid UA_EXPORT UA_Guid_random();
 
 /* ByteString */
 UA_Boolean UA_EXPORT UA_ByteString_equal(const UA_ByteString *string1, const UA_ByteString *string2);
