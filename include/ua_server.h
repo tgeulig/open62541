@@ -38,6 +38,13 @@ typedef struct UA_Server UA_Server;
 UA_Server UA_EXPORT * UA_Server_new(UA_String *endpointUrl, UA_ByteString *serverCertificate);
 void UA_EXPORT UA_Server_delete(UA_Server *server);
 
+#ifdef UA_MULTITHREADING
+/** Threads that work on a UA server with multithreading need to register */
+void UA_EXPORT UA_Server_registerThread();
+/** Threads that work on a UA server with multithreading need to unregister before closing down */
+void UA_EXPORT UA_Server_unregisterThread();
+#endif
+
 /**
  * Add a node to the server's address space
  *
@@ -73,6 +80,7 @@ void UA_EXPORT UA_Server_addScalarVariableNode(UA_Server *server, UA_QualifiedNa
 /** Contains the necessary information to dispatch work to a worker thread */
 typedef struct UA_WorkItem {
     enum {
+        UA_WORKITEMTYPE_NOTHING,
         UA_WORKITEMTYPE_BINARYNETWORKMESSAGE,
         UA_WORKITEMTYPE_BINARYNETWORKCLOSED,
         UA_WORKITEMTYPE_METHODCALL,
@@ -154,7 +162,7 @@ void UA_EXPORT UA_Server_addNetworkLayer(UA_Server *server, UA_NetworkLayer *net
  * @return Indicates whether the server shut down cleanly
  *
  */
-UA_StatusCode UA_EXPORT UA_Server_run(UA_Server *server, UA_UInt32 nThreads, UA_Boolean *running);
+UA_StatusCode UA_EXPORT UA_Server_run(UA_Server *server, UA_UInt16 nThreads, UA_Boolean *running);
 
 /** @} */
 

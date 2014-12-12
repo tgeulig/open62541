@@ -1,3 +1,9 @@
+#ifdef UA_MULTITHREADING
+#define _LGPL_SOURCE
+#include <urcu.h>
+//#include <urcu-call-rcu.h>
+#endif
+
 #include "ua_server_internal.h"
 #include "ua_namespace_0.h"
 #include "ua_securechannel_manager.h"
@@ -43,6 +49,19 @@ void UA_Server_addNetworkLayer(UA_Server *server, UA_NetworkLayer *networkLayer)
 /* Server */
 /**********/
 
+#ifdef UA_MULTITHREADING
+void UA_Server_registerThread() {
+   	rcu_register_thread();
+}
+#endif
+
+#ifdef UA_MULTITHREADING
+void UA_Server_unregisterThread() {
+    rcu_barrier(); // wait for all scheduled call_rcu work to complete
+   	rcu_unregister_thread();
+}
+#endif
+
 void UA_Server_delete(UA_Server *server) {
     // todo: shutdown the network layers
     // todo: empty and delete the dispatchQueue
@@ -66,8 +85,8 @@ UA_Server * UA_Server_new(UA_String *endpointUrl, UA_ByteString *serverCertifica
     if(!server)
         return UA_NULL;
 
-#ifdef MULTITHREADING
-    cds_wfq_init(&server->dispatchQueue);
+#ifdef UA_MULTITHREADING
+	cds_wfcq_init(&server->dispatchQueue_head, &server->dispatchQueue_tail);
 #endif
 
     // networklayers

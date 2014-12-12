@@ -3,10 +3,10 @@
 
 #include "ua_config.h"
 
-#ifdef MULTITHREADING
-#define _LGPL_SOURCE
+#ifdef UA_MULTITHREADING
+//#define _LGPL_SOURCE
 #include <urcu.h>
-#include <urcu/wfqueue.h> // todo: replace with wfcqueue once the lib updates
+#include <urcu/wfcqueue.h>
 #endif
 
 #include "ua_server.h"
@@ -39,10 +39,14 @@ struct UA_Server {
     UA_Int32 nlsSize;
     UA_NetworkLayer *nls;
 
-    #ifdef MULTITHREADING
+    #ifdef UA_MULTITHREADING
     UA_Boolean *running;
+    UA_UInt16 nThreads;
+    UA_UInt32 **workerCounters;
+
     // worker threads wait on the queue
-    struct cds_wfq_queue dispatchQueue;
+	struct cds_wfcq_head dispatchQueue_head;
+	struct cds_wfcq_tail dispatchQueue_tail;
     #endif
 };
 
@@ -52,19 +56,6 @@ UA_AddNodesResult UA_Server_addNodeWithSession(UA_Server *server, UA_Session *se
                                                const UA_ExpandedNodeId *parentNodeId, const UA_NodeId *referenceTypeId);
 
 UA_StatusCode UA_Server_addReferenceWithSession(UA_Server *server, UA_Session *session, const UA_AddReferencesItem *item);
-
-/** Used by worker threads or the main loop (without concurrency) */
-void processWork(UA_Server *server, const UA_WorkItem *items, UA_Int32 itemsSize);
-
-#ifdef MULTITHREADING
-void * runWorkerLoop(UA_Server *server);
-
-struct workListNode {
-    struct cds_wfq_node node; // node for the queue
-    const UA_UInt32 workSize;
-    const UA_WorkItem *work;
-};
-#endif
 
 /** The (nodes) AttributeIds are defined in part 6, table A1 of the standard */
 typedef enum {

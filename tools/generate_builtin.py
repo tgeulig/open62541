@@ -283,7 +283,7 @@ UA_TYPE_METHOD_DECODEXML_NOTIMPL(%(name)s)''')
     printc("\treturn retval;\n}\n")
 
     # 13) Print
-    printc('''#ifdef DEBUG''') 
+    printc('''#ifdef UA_DEBUG''') 
     printc('''void %(name)s_print(const %(name)s *p, FILE *stream) {
     fprintf(stream, "(%(name)s){");''')
     for i,(n,t) in enumerate(membermap.iteritems()):
@@ -346,7 +346,7 @@ printc('''/**
  */
  
 #include "%(outname)s_generated.h"
-#include "ua_types_internal.h"
+#include "ua_types_macros.h"
 #include "ua_namespace_0.h"
 #include "ua_util.h"\n''')
 

@@ -3,7 +3,7 @@
  * See http://creativecommons.org/publicdomain/zero/1.0/ for more information.
  */
 
-#ifdef WIN32
+#ifdef _WIN32
 #include <malloc.h>
 #include <winsock2.h>
 #include <sys/types.h>
@@ -17,6 +17,7 @@
 #define CLOSESOCKET(S) close(S)
 #endif
 
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <errno.h> // errno, EINTR
 #include <fcntl.h> // fcntl
@@ -106,7 +107,7 @@ void closeCallback(TCPConnection *handle) {
 
 void writeCallback(TCPConnection *handle, UA_ByteStringArray gather_buf) {
 	UA_UInt32 total_len = 0, nWritten = 0;
-#ifdef WIN32
+#ifdef _WIN32
 	LPWSABUF buf = _alloca(gather_buf.stringsSize * sizeof(WSABUF));
 	int result = 0;
 	for(UA_UInt32 i = 0; i<gather_buf.stringsSize; i++) {
@@ -149,13 +150,11 @@ void writeCallback(TCPConnection *handle, UA_ByteStringArray gather_buf) {
 		}
 	}
 #endif
-    for(UA_UInt32 i=0;i<gather_buf.stringsSize;i++)
-        free(gather_buf.strings[i].data);
-    // do not free(gather_buf.strings). they are assigned on the stack with alloca
+    // Do not delete the gather_buf (might be on the stack)
 }
 
 static UA_StatusCode setNonBlocking(int sockid) {
-#ifdef WIN32
+#ifdef _WIN32
 	u_long iMode = 1;
 	if(ioctlsocket(sockid, FIONBIO, &iMode) != NO_ERROR)
 		return UA_STATUSCODE_BADINTERNALERROR;
@@ -193,7 +192,7 @@ UA_NetworkLayer * NetworkLayerTCP_new(UA_ConnectionConfig conf, UA_UInt32 port) 
 	layer->conns = NULL;
     layer->recomputeFDSet = 1;
 
-#ifdef WIN32
+#ifdef _WIN32
 	WORD wVersionRequested;
 	WSADATA wsaData;
 	wVersionRequested = MAKEWORD(2, 2);
@@ -231,6 +230,7 @@ UA_NetworkLayer * NetworkLayerTCP_new(UA_ConnectionConfig conf, UA_UInt32 port) 
 
 	setNonBlocking(layer->serversockfd);
 	listen(layer->serversockfd, MAXBACKLOG);
+    printf("Listening on %s:%d\n", inet_ntoa(serv_addr.sin_addr), ntohs(serv_addr.sin_port));
 
     UA_NetworkLayer *nl = malloc(sizeof(UA_NetworkLayer));
     if(!nl)
@@ -249,7 +249,7 @@ void NetworkLayerTCP_delete(NetworkLayerTCP *layer) {
 	}
 	free(layer->conns);
 	free(layer);
-#ifdef WIN32
+#ifdef _WIN32
 	WSACleanup();
 #endif
 }
@@ -285,7 +285,7 @@ UA_Int32 NetworkLayerTCP_getWork(NetworkLayerTCP * layer, UA_WorkItem **workItem
 		if(FD_ISSET(layer->conns[i].sockfd, &layer->fdset)) {
             if(buf.data == NULL)
                 buf.data = malloc(layer->conf.recvBufferSize);
-#ifdef WIN32
+#ifdef _WIN32
             buf.length = recv(layer->conns[i].connection.sockfd, (char *)buf.data,
                               layer->conf.recvBufferSize, 0);
 #else

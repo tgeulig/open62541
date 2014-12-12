@@ -8,6 +8,9 @@
 #include "ua_session_manager.h"
 #include "ua_util.h"
 
+/** Max size of messages that are allocated on the stack */
+#define MAX_STACK_MESSAGE 65536
+
 static UA_StatusCode UA_ByteStringArray_deleteMembers(UA_ByteStringArray *stringarray) {
     if(!stringarray)
         return UA_STATUSCODE_BADINTERNALERROR;
@@ -45,9 +48,10 @@ static void processHello(UA_Connection *connection, const UA_ByteString *msg,
     ackHeader.messageSize = UA_TcpAcknowledgeMessage_calcSizeBinary(&ackMessage) +
                             UA_TcpMessageHeader_calcSizeBinary(&ackHeader);
 
-    UA_ByteString ack_msg;
+    // The message is on the stack. That's ok since ack is very small.
+    UA_ByteString ack_msg = (UA_ByteString){.length = ackHeader.messageSize,
+                                            .data = UA_alloca(ackHeader.messageSize)};
     UA_UInt32 tmpPos = 0;
-    UA_ByteString_newMembers(&ack_msg, ackHeader.messageSize);
     UA_TcpMessageHeader_encodeBinary(&ackHeader, &ack_msg, &tmpPos);
     UA_TcpAcknowledgeMessage_encodeBinary(&ackMessage, &ack_msg, &tmpPos);
     UA_ByteStringArray answer_buf = { .stringsSize = 1, .strings = &ack_msg };
@@ -104,8 +108,15 @@ static void processOpen(UA_Connection *connection, UA_Server *server, const UA_B
     respHeader.messageSize += UA_OpenSecureChannelResponse_calcSizeBinary(&p);
 
     UA_ByteString resp_msg;
+    UA_Boolean onStack = UA_FALSE;
+
+    if(respHeader.messageSize <= MAX_STACK_MESSAGE) {
+        onStack = UA_TRUE;
+        resp_msg = (UA_ByteString){.length = respHeader.messageSize, .data = UA_alloca(respHeader.messageSize)};
+    } else
+        UA_ByteString_newMembers(&resp_msg, respHeader.messageSize);
+
     UA_UInt32 tmpPos = 0;
-    UA_ByteString_newMembers(&resp_msg, respHeader.messageSize);
     UA_TcpMessageHeader_encodeBinary(&respHeader, &resp_msg, &tmpPos);
     UA_UInt32_encodeBinary(&p.securityToken.channelId, &resp_msg, &tmpPos);
     UA_AsymmetricAlgorithmSecurityHeader_encodeBinary(&asymHeader, &resp_msg, &tmpPos); // just mirror back
@@ -119,6 +130,8 @@ static void processOpen(UA_Connection *connection, UA_Server *server, const UA_B
     
     UA_ByteStringArray answer_buf = { .stringsSize = 1, .strings = &resp_msg };
     connection->write(connection, answer_buf);
+    if(!onStack)
+        UA_free(resp_msg.data);
 }
 
 static void init_response_header(const UA_RequestHeader *p, UA_ResponseHeader *r) {
@@ -134,19 +147,28 @@ static void init_response_header(const UA_RequestHeader *p, UA_ResponseHeader *r
             return;                  \
         } } while(0)
 
-#define INVOKE_SERVICE(TYPE) do {                                                                         \
-        UA_##TYPE##Request p;                                                                             \
-        UA_##TYPE##Response r;                                                                            \
-        CHECK_PROCESS(UA_##TYPE##Request_decodeBinary(msg, pos, &p),; );                                  \
-        UA_##TYPE##Response_init(&r);                                                                     \
-        init_response_header(&p.requestHeader, &r.responseHeader);                                        \
-        Service_##TYPE(server, channel->session, &p, &r);                                                 \
-        UA_ByteString_newMembers(message, UA_##TYPE##Response_calcSizeBinary(&r));                        \
-        UA_##TYPE##Response_encodeBinary(&r, message, &sendOffset);                                       \
-        UA_##TYPE##Request_deleteMembers(&p);                                                             \
-        UA_##TYPE##Response_deleteMembers(&r);                                                            \
-        responseType = requestType.nodeId.identifier.numeric + 3;                                         \
-} while(0)
+#define ALLOC_MESSAGE(MESSAGE, SIZE) do {                               \
+        UA_UInt32 messageSize = SIZE;                                   \
+        if(messageSize <= MAX_STACK_MESSAGE) {                          \
+            messageOnStack = UA_TRUE;                                   \
+            *MESSAGE = (UA_ByteString){.length = messageSize, .data = UA_alloca(messageSize)}; \
+        } else                                                          \
+            UA_ByteString_newMembers(MESSAGE, messageSize);             \
+    } while(0)
+
+#define INVOKE_SERVICE(TYPE) do {                                       \
+        UA_##TYPE##Request p;                                           \
+        UA_##TYPE##Response r;                                          \
+        CHECK_PROCESS(UA_##TYPE##Request_decodeBinary(msg, pos, &p),; ); \
+        UA_##TYPE##Response_init(&r);                                   \
+        init_response_header(&p.requestHeader, &r.responseHeader);      \
+        Service_##TYPE(server, channel->session, &p, &r);               \
+        ALLOC_MESSAGE(message, UA_##TYPE##Response_calcSizeBinary(&r)); \
+        UA_##TYPE##Response_encodeBinary(&r, message, &sendOffset);     \
+        UA_##TYPE##Request_deleteMembers(&p);                           \
+        UA_##TYPE##Response_deleteMembers(&r);                          \
+        responseType = requestType.nodeId.identifier.numeric + 3;       \
+    } while(0)
 
 static void processMessage(UA_Connection *connection, UA_Server *server, const UA_ByteString *msg,
                            UA_UInt32 *pos) {
@@ -182,6 +204,7 @@ static void processMessage(UA_Connection *connection, UA_Server *server, const U
     UA_UInt32 responseType;
     UA_ByteString *header = &responseBufs[0];
     UA_ByteString *message = &responseBufs[1];
+    UA_Boolean messageOnStack = UA_FALSE;
 
     UA_UInt32 sendOffset = 0;
     switch(requestType.nodeId.identifier.numeric - UA_ENCODINGOFFSET_BINARY) {
@@ -192,7 +215,7 @@ static void processMessage(UA_Connection *connection, UA_Server *server, const U
         UA_GetEndpointsResponse_init(&r);
         init_response_header(&p.requestHeader, &r.responseHeader);
         Service_GetEndpoints(server, &p, &r);
-        UA_ByteString_newMembers(message, UA_GetEndpointsResponse_calcSizeBinary(&r));
+        ALLOC_MESSAGE(message, UA_GetEndpointsResponse_calcSizeBinary(&r));
         UA_GetEndpointsResponse_encodeBinary(&r, message, &sendOffset);
         UA_GetEndpointsRequest_deleteMembers(&p);
         UA_GetEndpointsResponse_deleteMembers(&r);
@@ -207,7 +230,7 @@ static void processMessage(UA_Connection *connection, UA_Server *server, const U
         UA_CreateSessionResponse_init(&r);
         init_response_header(&p.requestHeader, &r.responseHeader);
         Service_CreateSession(server, channel,  &p, &r);
-        UA_ByteString_newMembers(message, UA_CreateSessionResponse_calcSizeBinary(&r));
+        ALLOC_MESSAGE(message, UA_CreateSessionResponse_calcSizeBinary(&r));
         UA_CreateSessionResponse_encodeBinary(&r, message, &sendOffset);
         UA_CreateSessionRequest_deleteMembers(&p);
         UA_CreateSessionResponse_deleteMembers(&r);
@@ -221,9 +244,8 @@ static void processMessage(UA_Connection *connection, UA_Server *server, const U
         CHECK_PROCESS(UA_ActivateSessionRequest_decodeBinary(msg, pos, &p),; );
         UA_ActivateSessionResponse_init(&r);
         init_response_header(&p.requestHeader, &r.responseHeader);
-
         Service_ActivateSession(server, channel,  &p, &r);
-        UA_ByteString_newMembers(message, UA_ActivateSessionResponse_calcSizeBinary(&r));
+        ALLOC_MESSAGE(message, UA_ActivateSessionResponse_calcSizeBinary(&r));
         UA_ActivateSessionResponse_encodeBinary(&r, message, &sendOffset);
         UA_ActivateSessionRequest_deleteMembers(&p);
         UA_ActivateSessionResponse_deleteMembers(&r);
@@ -237,9 +259,8 @@ static void processMessage(UA_Connection *connection, UA_Server *server, const U
         CHECK_PROCESS(UA_CloseSessionRequest_decodeBinary(msg, pos, &p),; );
         UA_CloseSessionResponse_init(&r);
         init_response_header(&p.requestHeader, &r.responseHeader);
-
         Service_CloseSession(server, &p, &r);
-        UA_ByteString_newMembers(message, UA_CloseSessionResponse_calcSizeBinary(&r));
+        ALLOC_MESSAGE(message, UA_CloseSessionResponse_calcSizeBinary(&r));
         UA_CloseSessionResponse_encodeBinary(&r, message, &sendOffset);
         UA_CloseSessionRequest_deleteMembers(&p);
         UA_CloseSessionResponse_deleteMembers(&r);
@@ -247,8 +268,24 @@ static void processMessage(UA_Connection *connection, UA_Server *server, const U
         break;
     }
 
-    case UA_READREQUEST_NS0:
-        INVOKE_SERVICE(Read);
+    case UA_READREQUEST_NS0: {
+        UA_ReadRequest p;                                           
+        UA_ReadResponse r;                                         
+        CHECK_PROCESS(UA_ReadRequest_decodeBinary(msg, pos, &p),; ); 
+        UA_ReadResponse_init(&r);                                   
+        init_response_header(&p.requestHeader, &r.responseHeader);     
+        if(p.nodesToReadSize > 0) {
+            r.resultsSize = p.nodesToReadSize;
+            r.results = UA_alloca(r.resultsSize * sizeof(UA_DataValue));
+        }
+        Service_Read(server, channel->session, &p, &r);               
+        ALLOC_MESSAGE(message, UA_ReadResponse_calcSizeBinary(&r));
+        UA_ReadResponse_encodeBinary(&r, message, &sendOffset);
+        UA_ReadRequest_deleteMembers(&p);                           
+        UA_ReadResponse_deleteMembers(&r);                          
+        responseType = requestType.nodeId.identifier.numeric + 3;       
+    }
+        //INVOKE_SERVICE(Read);
         break;
 
     case UA_WRITEREQUEST_NS0:
@@ -290,7 +327,7 @@ static void processMessage(UA_Connection *connection, UA_Server *server, const U
         UA_ResponseHeader_init(&r);
         r.requestHandle = p.requestHandle;
         r.serviceResult = UA_STATUSCODE_BADSERVICEUNSUPPORTED;
-        UA_ByteString_newMembers(message, UA_ResponseHeader_calcSizeBinary(&r));
+        ALLOC_MESSAGE(message, UA_ResponseHeader_calcSizeBinary(&r));
         UA_ResponseHeader_encodeBinary(&r, message, &sendOffset);
         UA_RequestHeader_deleteMembers(&p);
         UA_ResponseHeader_deleteMembers(&r);
@@ -303,23 +340,22 @@ static void processMessage(UA_Connection *connection, UA_Server *server, const U
     UA_NodeId response_nodeid = { .namespaceIndex     = 0, .identifierType = UA_NODEIDTYPE_NUMERIC,
                                   .identifier.numeric = responseType }; // add 2 for binary encoding
 
-    UA_ByteString_newMembers(header, 8 + 16 + // message header + 4*32bit secure channel information
-                             UA_NodeId_calcSizeBinary(&response_nodeid));
+    UA_UInt32 headerSize = 8 + 16 + // message header + 4*32bit secure channel information
+        UA_NodeId_calcSizeBinary(&response_nodeid); // the nodeid of a service is always numeric
+    *header = (UA_ByteString){.length = headerSize, .data = UA_alloca(headerSize)};
 
     // header
     UA_TcpMessageHeader respHeader;
     respHeader.messageType = UA_MESSAGETYPE_MSG;
     respHeader.isFinal     = 'F';
     respHeader.messageSize = header->length + message->length;
+
     UA_UInt32 rpos = 0;
     UA_TcpMessageHeader_encodeBinary(&respHeader, header, &rpos);
-
     UA_UInt32_encodeBinary(&channel->securityToken.channelId, header, &rpos); // channel id
     UA_UInt32_encodeBinary(&channel->securityToken.tokenId, header, &rpos); // algorithm security header
-
     UA_UInt32_encodeBinary(&channel->sequenceNumber, header, &rpos); // encode sequence header
-    UA_UInt32_encodeBinary(&channel->requestId, header, &rpos);
-
+    UA_UInt32_encodeBinary(&channel->requestId, header, &rpos); // request id
     UA_NodeId_encodeBinary(&response_nodeid, header, &rpos); // add payload type
 
     // sign data
@@ -331,6 +367,9 @@ static void processMessage(UA_Connection *connection, UA_Server *server, const U
     responseBufArray.strings = responseBufs; // the content is deleted in the write function (asynchronous)
     responseBufArray.stringsSize = 2;
     connection->write(connection, responseBufArray);
+
+    if(!messageOnStack)
+        UA_free(message->data);
 }
 
 static void processClose(UA_Connection *connection, UA_Server *server, const UA_ByteString *msg,

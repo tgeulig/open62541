@@ -20,13 +20,13 @@
 extern "C" {
 #endif
 
+#include "ua_config.h"
+
 #include <stdint.h>
-#ifdef DEBUG
+#ifdef UA_DEBUG
 #include <stdio.h>
 #endif
 
-#include "ua_config.h"
-    
 /**
  * @defgroup types Datatypes
  *
@@ -275,7 +275,7 @@ typedef void UA_InvalidType;
 /* Functions */
 /*************/
 
-#ifdef DEBUG
+#ifdef UA_DEBUG
 #define PRINTTYPE(TYPE) void UA_EXPORT TYPE##_print(const TYPE *p, FILE *stream);
 #define PRINTTYPE_NOEXPORT(TYPE) void TYPE##_print(const TYPE *p, FILE *stream);
 #else
@@ -356,7 +356,7 @@ UA_TYPE_PROTOTYPES(UA_InvalidType)
 UA_StatusCode UA_EXPORT UA_String_copycstring(char const *src, UA_String *dst);
 UA_StatusCode UA_EXPORT UA_String_copyprintf(char const *fmt, UA_String *dst, ...);
 UA_Boolean UA_EXPORT UA_String_equal(const UA_String *string1, const UA_String *string2);
-#ifdef DEBUG
+#ifdef UA_DEBUG
 void UA_EXPORT UA_String_printf(char const *label, const UA_String *string);
 void UA_EXPORT UA_String_printx(char const *label, const UA_String *string);
 void UA_EXPORT UA_String_printx_hex(char const *label, const UA_String *string);
@@ -385,7 +385,7 @@ UA_Guid UA_EXPORT UA_Guid_random();
 /* ByteString */
 UA_Boolean UA_EXPORT UA_ByteString_equal(const UA_ByteString *string1, const UA_ByteString *string2);
 UA_StatusCode UA_EXPORT UA_ByteString_newMembers(UA_ByteString *p, UA_Int32 length);
-#ifdef DEBUG
+#ifdef UA_DEBUG
 void UA_EXPORT UA_ByteString_printf(char *label, const UA_ByteString *string);
 void UA_EXPORT UA_ByteString_printx(char *label, const UA_ByteString *string);
 void UA_EXPORT UA_ByteString_printx_hex(char *label, const UA_ByteString *string);
@@ -403,7 +403,7 @@ UA_Boolean UA_EXPORT UA_ExpandedNodeId_isNull(const UA_ExpandedNodeId *p);
         VARIABLE.namespaceIndex = 0;                   \
         UA_STRING_STATIC(VARIABLE.name, STRING); } while(0)
 UA_StatusCode UA_EXPORT UA_QualifiedName_copycstring(char const *src, UA_QualifiedName *dst);
-#ifdef DEBUG
+#ifdef UA_DEBUG
 void UA_EXPORT UA_QualifiedName_printf(char const *label, const UA_QualifiedName *qn);
 #endif
 
@@ -425,7 +425,7 @@ void UA_EXPORT UA_Array_delete(void *p, UA_Int32 noElements, const UA_TypeVTable
 
 /* @brief The destination array is allocated with size noElements. */
 UA_StatusCode UA_EXPORT UA_Array_copy(const void *src, UA_Int32 noElements, const UA_TypeVTable *vt, void **dst);
-#ifdef DEBUG
+#ifdef UA_DEBUG
 void UA_EXPORT UA_Array_print(const void *p, UA_Int32 noElements, const UA_TypeVTable *vt, FILE *stream);
 #endif
 
@@ -452,7 +452,7 @@ struct UA_TypeVTable {
     UA_StatusCode (*copy)(void const *src, void *dst);
     void          (*delete)(void *p);
     void          (*deleteMembers)(void *p);
-#ifdef DEBUG
+#ifdef UA_DEBUG
     void          (*print)(const void *p, FILE *stream);
 #endif
     UA_UInt32  memSize;                        // size of the struct

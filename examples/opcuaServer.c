@@ -19,6 +19,7 @@
 UA_Boolean running = 1;
 
 void stopHandler(int sign) {
+    printf("Received Ctrl-C\n");
 	running = 0;
 }
 
@@ -48,19 +49,22 @@ UA_ByteString loadCertificate() {
 int main(int argc, char** argv) {
 	signal(SIGINT, stopHandler); /* catches ctrl-c */
 
+#ifdef UA_MULTITHREADING
+    UA_Server_registerThread();
+#endif
+
 	UA_String endpointUrl;
     UA_String_copycstring("opc.tcp://localhost:16664",&endpointUrl);
 	UA_ByteString certificate = loadCertificate();
 	UA_Server *server = UA_Server_new(&endpointUrl, &certificate);
 
 	//add a node to the adresspace
-    UA_Int32 *myInteger = malloc(sizeof(UA_Int32));
+    UA_Int32 *myInteger = UA_Int32_new();
     *myInteger = 42;
     UA_QualifiedName myIntegerName;
-    UA_QualifiedName_copycstring("the answer is",&myIntegerName);
+    UA_QUALIFIEDNAME_STATIC(myIntegerName, "the answer");
     UA_Server_addScalarVariableNode(server, &myIntegerName, myInteger, &UA_TYPES[UA_INT32],
                                     &UA_EXPANDEDNODEIDS[UA_OBJECTSFOLDER], &UA_NODEIDS[UA_ORGANIZES]);
-    UA_QualifiedName_deleteMembers(&myIntegerName);
     
 #ifdef BENCHMARK
     UA_UInt32 nodeCount = 500;
@@ -82,13 +86,18 @@ int main(int argc, char** argv) {
         UA_Server_addNode(server, (const UA_Node**)&tmpNode, &UA_EXPANDEDNODEIDS[UA_OBJECTSFOLDER],
                           &UA_NODEIDS[UA_HASCOMPONENT]);
     }
-#endif
 	
-	#define PORT 16664
-    UA_Server_addNetworkLayer(server, NetworkLayerTCP_new(UA_ConnectionConfig_standard, PORT));
-	printf("Server started, connect to to opc.tcp://127.0.0.1:%i\n", PORT);
+#endif
+
+    UA_Server_addNetworkLayer(server, NetworkLayerTCP_new(UA_ConnectionConfig_standard, 16664));
     UA_StatusCode retval = UA_Server_run(server, 1, &running);
+    printf("done\n");
 	UA_Server_delete(server);
     UA_String_deleteMembers(&endpointUrl);
+
+#ifdef UA_MULTITHREADING
+    UA_Server_unregisterThread();
+#endif
+    
 	return retval;
 }

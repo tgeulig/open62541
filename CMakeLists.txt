@@ -3,16 +3,27 @@ cmake_minimum_required(VERSION 2.8.8)
 
 project(open62541 C)
 set(open62541_VERSION_MAJOR 0)
-set(open62541_VERSION_MINOR 1)
+set(open62541_VERSION_MINOR 0)
+set(NVIM_VERSION_PATCH 0)
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG")
+
+# Set available build types for CMake GUIs.
+# A different build type can still be set by -DCMAKE_BUILD_TYPE=...
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+
+# Set default build type.
+if (NOT CMAKE_BUILD_TYPE)
+    message(STATUS "CMAKE_BUILD_TYPE not given; setting to 'RelWithDebInfo'.")
+    set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose the type of build." FORCE)
+endif()
 
 # main sources of libopen62541
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src")
 file(GLOB_RECURSE exported_headers "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
 file(GLOB_RECURSE headers "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h")
+file(GLOB_RECURSE headers "${CMAKE_CURRENT_SOURCE_DIR}/deps/*.h")
 file(GLOB generated_headers "${PROJECT_BINARY_DIR}/src_generated/*.h")
 set(lib_sources src/ua_types.c
                 src/ua_types_encoding_binary.c
@@ -54,8 +65,14 @@ add_definitions(-std=c99 -pedantic -pipe -Wall -Wextra -Werror -Wformat
 endif()
 
 # build settings
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules")
 set(generate_src_options) # the options for the tools that generate code from xml-schema definitions
+
+## set debug flag
+if(CMAKE_BUILD_TYPE MATCHES Debug)
+    set(UA_DEBUG ON)
+else()
+    set(UA_DEBUG OFF)
+endif()
 
 ## self-signed certificates
 option(ENABLE_SELFSIGNED "Enable self-signed certificates" OFF)
@@ -107,6 +124,7 @@ endif()
 ## multithreading
 option(MULTITHREADING "Enable multithreading" OFF)
 if(MULTITHREADING)
+    set(UA_MULTITHREADING ON)
     find_package(Threads REQUIRED)
     list(APPEND lib_sources src/server/ua_nodestore_concurrent.c)
 else()
@@ -116,7 +134,7 @@ endif()
 add_library(open62541-objects OBJECT ${lib_sources}) # static version that exports all symbols
 add_library(open62541 SHARED $<TARGET_OBJECTS:open62541-objects>)
 target_compile_definitions(open62541 INTERFACE
-  $<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,SHARED_LIBRARY>:open62541_EXPORTS> # the UA_EXPORT macro is different when building the lib or using the lib
+  $<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,SHARED_LIBRARY>:UA_DYNAMIC_LINKING> # the UA_EXPORT macro is different when building the lib or using the lib
 )
 
 ## logging
@@ -196,7 +214,7 @@ if(WIN32)
     target_link_libraries(exampleServer ws2_32)
 endif(WIN32)
 if(MULTITHREADING)
-    target_link_libraries(exampleServer urcu-cds urcu pthread)
+    target_link_libraries(exampleServer urcu-cds urcu urcu-common pthread)
 endif()
 endif()
 

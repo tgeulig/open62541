@@ -6,12 +6,12 @@
 #include <assert.h> // assert
 #include <stddef.h> /* Needed for sys/queue.h */
 
-#ifndef WIN32
+#ifndef _WIN32
 #include <sys/queue.h>
 #include <alloca.h>
 #else
-#include "queue.h"
 #include <malloc.h>
+#include "queue.h"
 #endif
 
 #include "ua_config.h"
@@ -34,7 +34,7 @@
 #define UA_memcpy(dst, src, size) memcpy(dst, src, size)
 #define UA_realloc(ptr, size) realloc(ptr, size)
 
-#ifdef WIN32
+#ifdef _WIN32
 #define UA_alloca(size) _alloca(size)
 #else
 #define UA_alloca(size) alloca(size)
