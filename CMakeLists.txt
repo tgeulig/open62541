@@ -198,7 +198,7 @@ if(CLIENT)
     # internal functions that are not exported to the shared lib.
 	add_executable(exampleClient $<TARGET_OBJECTS:open62541-objects> examples/opcuaClient.c)
     if(MULTITHREADING)
-        target_link_libraries(exampleClient urcu-cds urcu pthread)
+        target_link_libraries(exampleClient urcu-cds urcu urcu-common pthread)
     endif()
 endif()
 

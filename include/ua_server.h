@@ -69,7 +69,7 @@ void UA_EXPORT UA_Server_addScalarVariableNode(UA_Server *server, UA_QualifiedNa
                                                const UA_NodeId *referenceTypeId );
 
 /**
- * @defgroup dispatch Dispatch Queue
+ * @defgroup worker Worker Threads
  *
  * @brief Work items (network events, timed events, ...) are collected and
  * dispatched to worker threads from a central queue
@@ -101,8 +101,16 @@ typedef struct UA_WorkItem {
     } item;
 } UA_WorkItem;
 
+void UA_EXPORT UA_Server_dispatchWorkItem(UA_Server *server, UA_WorkItem **work);
+UA_Guid UA_EXPORT UA_Server_dispatchTimedWorkItem(UA_Server *server, UA_WorkItem **work, UA_DateTime time);
+UA_Guid UA_EXPORT UA_Server_dispatchRepeatedWorkItem(UA_Server *server, UA_WorkItem **work, UA_UInt32 interval);
+
+UA_Boolean UA_EXPORT UA_Server_removeTimedWorkItem(UA_Server *server, UA_Guid workId);
+UA_Boolean UA_EXPORT UA_Server_removeRepeatedWorkItem(UA_Server *server, UA_Guid workId);
+
 /** @} */
 
+    
 /**
  * Interface to the binary network layers. This structure is returned from the
  * function that initializes the network layer. The layer is already bound to a

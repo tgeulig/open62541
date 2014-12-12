@@ -1,27 +1,21 @@
 #include "ua_server_internal.h"
 
-/**
- * Timed Work
- *
- * Timed work comes in two flavors: timedWork and repeatedWork
- *
- */
-
 /** The timed event and repeated event are only relevant for the main thread,
     not the workers. */
-struct timedWork {
-    UA_WorkItem workItem;
+typedef struct {
+    UA_WorkItem work;
+    UA_Guid id;
     UA_DateTime time;
-};
+} UA_TimedWorkItem;
 
 /** Repeated events must ensure that the data is properly deleted at close */
-struct repeatedWork {
-    struct timedWork next;
+typedef struct {
+    UA_WorkItem work;
     UA_Guid id;
     UA_UInt32 interval; // in 100ns resolution
-};
+} UA_RepeatedWorkItem;
 
-void processWorkItem(UA_Server *server, const UA_WorkItem *item) {
+static void processWorkItem(UA_Server *server, const UA_WorkItem *item) {
     switch(item->type) {
     case UA_WORKITEMTYPE_BINARYNETWORKMESSAGE:
         UA_Server_processBinaryMessage(server, item->item.binaryNetworkMessage.connection,
