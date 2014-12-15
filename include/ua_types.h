@@ -116,7 +116,7 @@ typedef struct {
 } UA_String;
 
 /** @brief An instance in time. */
-typedef UA_Int64 UA_DateTime; //100 nanosecond resolution
+typedef UA_Int64 UA_DateTime; // 100 nanosecond resolution
 
 /** @brief A 16 byte value that can be used as a globally unique identifier. */
 typedef struct {

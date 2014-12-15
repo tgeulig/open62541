@@ -101,12 +101,9 @@ typedef struct UA_WorkItem {
     } item;
 } UA_WorkItem;
 
-void UA_EXPORT UA_Server_dispatchWorkItem(UA_Server *server, UA_WorkItem **work);
-UA_Guid UA_EXPORT UA_Server_dispatchTimedWorkItem(UA_Server *server, UA_WorkItem **work, UA_DateTime time);
-UA_Guid UA_EXPORT UA_Server_dispatchRepeatedWorkItem(UA_Server *server, UA_WorkItem **work, UA_UInt32 interval);
-
+void UA_EXPORT UA_Server_asyncRunWorkItem(UA_Server *server, UA_WorkItem **work);
+UA_Guid UA_EXPORT UA_Server_addTimedWorkItem(UA_Server *server, UA_WorkItem **work, UA_DateTime time);
 UA_Boolean UA_EXPORT UA_Server_removeTimedWorkItem(UA_Server *server, UA_Guid workId);
-UA_Boolean UA_EXPORT UA_Server_removeRepeatedWorkItem(UA_Server *server, UA_Guid workId);
 
 /** @} */
 

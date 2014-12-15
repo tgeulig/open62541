@@ -147,6 +147,7 @@ static void init_response_header(const UA_RequestHeader *p, UA_ResponseHeader *r
             return;                  \
         } } while(0)
 
+// if the message is small enough, we allocate it on the stack and save a malloc
 #define ALLOC_MESSAGE(MESSAGE, SIZE) do {                               \
         UA_UInt32 messageSize = SIZE;                                   \
         if(messageSize <= MAX_STACK_MESSAGE) {                          \

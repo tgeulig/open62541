@@ -22,6 +22,13 @@ typedef struct UA_ExternalNamespace {
 	UA_ExternalNodeStore externalNodeStore;
 } UA_ExternalNamespace;
 
+// forward declarations
+struct UA_TimedWork;
+typedef struct UA_TimedWork UA_TimedWork;
+
+struct UA_DelayedWork;
+typedef struct UA_DelayedWork UA_DelayedWork;
+
 struct UA_Server {
     UA_ApplicationDescription description;
     UA_Int32 endpointDescriptionsSize;
@@ -39,7 +46,7 @@ struct UA_Server {
     UA_Int32 nlsSize;
     UA_NetworkLayer *nls;
 
-    #ifdef UA_MULTITHREADING
+#ifdef UA_MULTITHREADING
     UA_Boolean *running;
     UA_UInt16 nThreads;
     UA_UInt32 **workerCounters;
@@ -47,7 +54,10 @@ struct UA_Server {
     // worker threads wait on the queue
 	struct cds_wfcq_head dispatchQueue_head;
 	struct cds_wfcq_tail dispatchQueue_tail;
-    #endif
+#endif
+
+    TAILQ_HEAD(UA_DelayedWorkQueue, UA_DelayedWork) delayedWork;
+    SLIST_HEAD(UA_TimedWorkList, UA_TimedWork) timedWork;
 };
 
 void UA_Server_processBinaryMessage(UA_Server *server, UA_Connection *connection, const UA_ByteString *msg);
