@@ -91,7 +91,7 @@ typedef struct UA_WorkItem {
             UA_Connection *connection;
             UA_ByteString message;
         } binaryNetworkMessage; ///< A message was received
-        UA_Connection * binaryNetworkClose; ///< A connection has been closed (internal or remotely). Clean up internally
+        UA_Connection * binaryNetworkClosed; ///< A connection has been closed (internal or remotely). Clean up internally
         struct {
             void * data;
             void (*method)(UA_Server *server, void *data);
@@ -102,12 +102,29 @@ typedef struct UA_WorkItem {
 } UA_WorkItem;
 
 void UA_EXPORT UA_Server_asyncRunWorkItem(UA_Server *server, UA_WorkItem **work);
-UA_Guid UA_EXPORT UA_Server_addTimedWorkItem(UA_Server *server, UA_WorkItem **work, UA_DateTime time);
-UA_Boolean UA_EXPORT UA_Server_removeTimedWorkItem(UA_Server *server, UA_Guid workId);
+
+/**
+ * Add work that is executed at a given time in the future. If the indicated
+ * time lies in the past, the work is * executed immediately.
+ *
+ * The work pointer is not freed but copied to an internal representation
+ */
+UA_Guid UA_EXPORT UA_Server_addTimedWorkItem(UA_Server *server, UA_WorkItem *work, UA_DateTime time);
+
+/**
+ *  Add work that is executed repeatedly with the given interval (in 100ns). If
+ *  work with the same repetition interval already exists, the first execution
+ *  might occur sooner.
+ *
+ * The work pointer is not freed but copied to an internal representation
+ */
+UA_Guid UA_EXPORT UA_Server_addRepeatedWorkItem(UA_Server *server, UA_WorkItem *work, UA_UInt32 interval);
+
+/** Remove timed or repeated work */
+UA_Boolean UA_EXPORT UA_Server_removeWorkItem(UA_Server *server, UA_Guid workId);
 
 /** @} */
 
-    
 /**
  * Interface to the binary network layers. This structure is returned from the
  * function that initializes the network layer. The layer is already bound to a
@@ -116,8 +133,15 @@ UA_Boolean UA_EXPORT UA_Server_removeTimedWorkItem(UA_Server *server, UA_Guid wo
  * layer does not need to be thread-safe.
  */
 typedef struct {
-    void *nlhandle; ///< Internal data of the network layer
+    void *nlHandle; ///< Internal data of the network layer
 
+    /**
+     * Starts listening on the the networklayer.
+     *
+     * @return Returns UA_STATUSCODE_GOOD or an error code.
+     */
+    UA_StatusCode (*start)(void *nlHandle);
+    
     /**
      * Gets called from the main server loop and returns the work that
      * accumulated (messages and close events) for dispatch. The networklayer
@@ -129,7 +153,7 @@ typedef struct {
      * @return The size of the returned workItems array. If the result is
      * negative, an error has occured.
      */
-    UA_Int32 (*getWork)(void *nlhandle, UA_WorkItem **workItems);
+    UA_Int32 (*getWork)(void *nlhandle, UA_WorkItem **workItems, UA_UInt16 timeout);
 
     /**
      * Closes the network connection and returns all the work that needs to
@@ -140,7 +164,7 @@ typedef struct {
      * @return The size of the returned workItems array. If the result is
      * negative, an error has occured.
      */
-    UA_Int32 (*shutdown)(void *nlhandle, UA_WorkItem **workItems);
+    UA_Int32 (*stop)(void *nlhandle, UA_WorkItem **workItems);
 
     /** Deletes the network layer. Call only after a successfull shutdown. */
     void (*delete)(void *nlhandle);

@@ -2,6 +2,9 @@
 #include <time.h>
 #include <stdio.h>
 
+#define __USE_POSIX
+#include <stdlib.h>
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -254,9 +257,7 @@ void UA_String_printx_hex(char const *label, const UA_String *string) {
 /* DateTime */
 UA_TYPE_AS(UA_DateTime, UA_Int64)
 
-// Number of seconds from 1 Jan. 1601 00:00 to 1 Jan 1970 00:00 UTC
-#define FILETIME_UNIXTIME_BIAS_SEC 11644473600LL
-// Factors
+#define UNIX_EPOCH_BIAS_SEC 11644473600LL // Number of seconds from 1 Jan. 1601 00:00 to 1 Jan 1970 00:00 UTC
 #define HUNDRED_NANOSEC_PER_USEC 10LL
 #define HUNDRED_NANOSEC_PER_SEC (HUNDRED_NANOSEC_PER_USEC * 1000000LL)
 
@@ -276,13 +277,11 @@ int gettimeofday(struct timeval *tp, struct timezone *tzp) {
 }
 #endif
 
-// IEC 62541-6 §5.2.2.5  A DateTime value shall be encoded as a 64-bit signed integer
-// which represents the number of 100 nanosecond intervals since January 1, 1601 (UTC).
 UA_DateTime UA_DateTime_now() {
     UA_DateTime    dateTime;
     struct timeval tv;
     gettimeofday(&tv, UA_NULL);
-    dateTime = (tv.tv_sec + FILETIME_UNIXTIME_BIAS_SEC)
+    dateTime = (tv.tv_sec + UNIX_EPOCH_BIAS_SEC)
                * HUNDRED_NANOSEC_PER_SEC + tv.tv_usec * HUNDRED_NANOSEC_PER_USEC;
     return dateTime;
 }
@@ -290,25 +289,19 @@ UA_DateTime UA_DateTime_now() {
 UA_DateTimeStruct UA_DateTime_toStruct(UA_DateTime time) {
     UA_DateTimeStruct dateTimeStruct;
     //calcualting the the milli-, micro- and nanoseconds
-    UA_DateTime       timeTemp;
-    timeTemp = (time-((time/10)*10))*100; //getting the last digit -> *100 for the 100 nanaseconds resolution
-    dateTimeStruct.nanoSec  = timeTemp;   //123 456 7 -> 700 nanosec;
-    timeTemp = (time-((time/10000)*10000))/10;
-    dateTimeStruct.microSec = timeTemp;   //123 456 7 -> 456 microsec
-    timeTemp = (time-((time/10000000)*10000000))/10000;
-    dateTimeStruct.milliSec = timeTemp;   //123 456 7 -> 123 millisec
+    dateTimeStruct.nanoSec = (time % 10) * 100;
+    dateTimeStruct.microSec = (time % 10000) / 10;
+    dateTimeStruct.milliSec = (time % 10000000) / 10000;
 
     //calculating the unix time with #include <time.h>
-    time_t    timeInSec = time/10000000; //converting the nanoseconds time in unixtime
-    struct tm ts;
-    ts = *gmtime(&timeInSec);
+    time_t secSinceUnixEpoch = (time/10000000) - UNIX_EPOCH_BIAS_SEC;
+    struct tm ts = *gmtime(&secSinceUnixEpoch);
     dateTimeStruct.sec    = ts.tm_sec;
     dateTimeStruct.min    = ts.tm_min;
     dateTimeStruct.hour   = ts.tm_hour;
     dateTimeStruct.day    = ts.tm_mday;
-    dateTimeStruct.mounth = ts.tm_mon+1;
+    dateTimeStruct.month  = ts.tm_mon+1;
     dateTimeStruct.year   = ts.tm_year + 1900;
-
     return dateTimeStruct;
 }
 
@@ -319,7 +312,7 @@ UA_StatusCode UA_DateTime_toString(UA_DateTime time, UA_String *timeString) {
     timeString->length = 31;
 
     UA_DateTimeStruct tSt = UA_DateTime_toStruct(time);
-    sprintf((char*)timeString->data, "%2d/%2d/%4d %2d:%2d:%2d.%3d.%3d.%3d", tSt.mounth, tSt.day, tSt.year,
+    sprintf((char*)timeString->data, "%2d/%2d/%4d %2d:%2d:%2d.%3d.%3d.%3d", tSt.month, tSt.day, tSt.year,
             tSt.hour, tSt.min, tSt.sec, tSt.milliSec, tSt.microSec, tSt.nanoSec);
     return UA_STATUSCODE_GOOD;
 }
@@ -332,6 +325,17 @@ UA_Boolean UA_Guid_equal(const UA_Guid *g1, const UA_Guid *g2) {
     if(memcmp(g1, g2, sizeof(UA_Guid)) == 0)
         return UA_TRUE;
     return UA_FALSE;
+}
+
+UA_Guid UA_EXPORT UA_Guid_random(UA_UInt32 *seed) {
+    UA_Guid result;
+    result.data1 = rand_r(seed);
+    UA_UInt32 r = rand_r(seed);
+    result.data2 = r;
+    result.data3 = r >> 16;
+    *((UA_UInt32*)&result.data4[0]) = rand_r(seed);
+    *((UA_UInt32*)&result.data4[4]) = rand_r(seed);
+    return result;
 }
 
 void UA_Guid_init(UA_Guid *p) {

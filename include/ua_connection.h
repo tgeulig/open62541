@@ -22,11 +22,8 @@ extern "C" {
 
 #include "ua_types.h"
 
-/** @defgroup communication Communication */
-
 /**
- * @ingroup communication
- * @defgroup connection Connection
+ * @defgroup communication Communication
  *
  * @{
  */
@@ -39,9 +36,9 @@ typedef struct UA_ByteStringArray {
 } UA_ByteStringArray;
 
 typedef enum UA_ConnectionState {
-    UA_CONNECTION_OPENING,
-    UA_CONNECTION_CLOSING,
-    UA_CONNECTION_ESTABLISHED
+    UA_CONNECTION_OPENING, ///< The port is open, but we haven't received a HEL
+    UA_CONNECTION_ESTABLISHED, ///< The port is open and the connection configured
+    UA_CONNECTION_CLOSING, ///< The port has been closed and the connection will be deleted
 } UA_ConnectionState;
 
 typedef struct UA_ConnectionConfig {
@@ -66,6 +63,9 @@ typedef struct UA_Connection {
     void (*write)(void *connection, UA_ByteStringArray buf);
     void (*close)(void *connection);
 } UA_Connection;
+
+void UA_EXPORT UA_Connection_detachSecureChannel(UA_Connection *connection);
+// void UA_Connection_attachSecureChannel(UA_Connection *connection);
 
 /** @} */
 

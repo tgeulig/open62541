@@ -35,7 +35,7 @@ static hash_t const primes[] = {
     134217689, 268435399,  536870909,  1073741789, 2147483647,  4294967291
 };
 
-static INLINE UA_Int16 higher_prime_index(hash_t n) {
+static UA_Int16 higher_prime_index(hash_t n) {
     UA_UInt16 low  = 0;
     UA_UInt16 high = sizeof(primes) / sizeof(hash_t);
     while(low != high) {

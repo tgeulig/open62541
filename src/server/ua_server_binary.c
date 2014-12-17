@@ -63,9 +63,7 @@ static void processHello(UA_Connection *connection, const UA_ByteString *msg,
 static void processOpen(UA_Connection *connection, UA_Server *server, const UA_ByteString *msg,
                         UA_UInt32 *pos) {
     if(connection->state != UA_CONNECTION_ESTABLISHED) {
-        // was hello exchanged before?
-        if(connection->state == UA_CONNECTION_OPENING)
-            connection->close(connection);
+        connection->close(connection);
         return;
     }
 
@@ -97,7 +95,7 @@ static void processOpen(UA_Connection *connection, UA_Server *server, const UA_B
     UA_TcpMessageHeader respHeader;
     respHeader.messageType = UA_MESSAGETYPE_OPN;
     respHeader.isFinal     = 'F';
-    respHeader.messageSize = 8+4; //header + securechannelid
+    respHeader.messageSize = 8;
 
     UA_ExpandedNodeId responseType = UA_EXPANDEDNODEIDS[UA_OPENSECURECHANNELRESPONSE];
     responseType.nodeId.identifier.numeric += UA_ENCODINGOFFSET_BINARY;
@@ -127,9 +125,7 @@ static void processOpen(UA_Connection *connection, UA_Server *server, const UA_B
     UA_OpenSecureChannelRequest_deleteMembers(&r);
     UA_OpenSecureChannelResponse_deleteMembers(&p);
     UA_AsymmetricAlgorithmSecurityHeader_deleteMembers(&asymHeader);
-    
-    UA_ByteStringArray answer_buf = { .stringsSize = 1, .strings = &resp_msg };
-    connection->write(connection, answer_buf);
+    connection->write(connection, (UA_ByteStringArray){ .stringsSize = 1, .strings = &resp_msg });
     if(!onStack)
         UA_free(resp_msg.data);
 }
@@ -275,10 +271,6 @@ static void processMessage(UA_Connection *connection, UA_Server *server, const U
         CHECK_PROCESS(UA_ReadRequest_decodeBinary(msg, pos, &p),; ); 
         UA_ReadResponse_init(&r);                                   
         init_response_header(&p.requestHeader, &r.responseHeader);     
-        if(p.nodesToReadSize > 0) {
-            r.resultsSize = p.nodesToReadSize;
-            r.results = UA_alloca(r.resultsSize * sizeof(UA_DataValue));
-        }
         Service_Read(server, channel->session, &p, &r);               
         ALLOC_MESSAGE(message, UA_ReadResponse_calcSizeBinary(&r));
         UA_ReadResponse_encodeBinary(&r, message, &sendOffset);
@@ -412,7 +404,6 @@ void UA_Server_processBinaryMessage(UA_Server *server, UA_Connection *connection
                 }
 
             case UA_MESSAGETYPE_CLO:
-                connection->state = UA_CONNECTION_CLOSING;
                 processClose(connection, server, msg, &pos);
                 connection->close(connection);
                 return;
@@ -420,7 +411,6 @@ void UA_Server_processBinaryMessage(UA_Server *server, UA_Connection *connection
             UA_TcpMessageHeader_deleteMembers(&tcpMessageHeader);
         } else {
             printf("TL_Process - ERROR: decoding of header failed \n");
-            connection->state = UA_CONNECTION_CLOSING;
             //processClose(connection, server, msg, &pos);
             connection->close(connection);
         }

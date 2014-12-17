@@ -46,6 +46,10 @@ UA_ByteString loadCertificate() {
     return certificate;
 }
 
+void test(UA_Server *server, void *data) {
+       printf("here\n");
+}
+
 int main(int argc, char** argv) {
 	signal(SIGINT, stopHandler); /* catches ctrl-c */
 
@@ -58,13 +62,18 @@ int main(int argc, char** argv) {
 	UA_ByteString certificate = loadCertificate();
 	UA_Server *server = UA_Server_new(&endpointUrl, &certificate);
 
+    /* UA_WorkItem work = {.type = UA_WORKITEMTYPE_METHODCALL, .item.methodCall = {.method = test, .data = UA_NULL} }; */
+    /* UA_Server_addRepeatedWorkItem(server, &work, 10000000); */
+
 	//add a node to the adresspace
     UA_Int32 *myInteger = UA_Int32_new();
     *myInteger = 42;
     UA_QualifiedName myIntegerName;
     UA_QUALIFIEDNAME_STATIC(myIntegerName, "the answer");
-    UA_Server_addScalarVariableNode(server, &myIntegerName, myInteger, &UA_TYPES[UA_INT32],
-                                    &UA_EXPANDEDNODEIDS[UA_OBJECTSFOLDER], &UA_NODEIDS[UA_ORGANIZES]);
+    UA_Server_addScalarVariableNode(server, &myIntegerName,
+                                    myInteger, &UA_TYPES[UA_INT32],
+                                    &UA_EXPANDEDNODEIDS[UA_OBJECTSFOLDER],
+                                    &UA_NODEIDS[UA_ORGANIZES]);
     
 #ifdef BENCHMARK
     UA_UInt32 nodeCount = 500;
@@ -83,15 +92,14 @@ int main(int argc, char** argv) {
         tmpNode->value.storage.data.dataPtr = &data;
         tmpNode->value.storageType = UA_VARIANT_DATA_NODELETE;
         tmpNode->value.storage.data.arrayLength = 1;
-        UA_Server_addNode(server, (const UA_Node**)&tmpNode, &UA_EXPANDEDNODEIDS[UA_OBJECTSFOLDER],
+        UA_Server_addNode(server, (const UA_Node**)&tmpNode,
+                          &UA_EXPANDEDNODEIDS[UA_OBJECTSFOLDER],
                           &UA_NODEIDS[UA_HASCOMPONENT]);
     }
-	
 #endif
 
     UA_Server_addNetworkLayer(server, NetworkLayerTCP_new(UA_ConnectionConfig_standard, 16664));
     UA_StatusCode retval = UA_Server_run(server, 1, &running);
-    printf("done\n");
 	UA_Server_delete(server);
     UA_String_deleteMembers(&endpointUrl);
 

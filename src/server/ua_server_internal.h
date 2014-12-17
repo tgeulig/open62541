@@ -4,7 +4,7 @@
 #include "ua_config.h"
 
 #ifdef UA_MULTITHREADING
-//#define _LGPL_SOURCE
+#define _LGPL_SOURCE
 #include <urcu.h>
 #include <urcu/wfcqueue.h>
 #endif
@@ -46,6 +46,9 @@ struct UA_Server {
     UA_Int32 nlsSize;
     UA_NetworkLayer *nls;
 
+    UA_UInt32 random_seed;
+    /* pthread_mutex_t mainMutex; // select Server_.. functions interfere with the main loop */
+
 #ifdef UA_MULTITHREADING
     UA_Boolean *running;
     UA_UInt16 nThreads;
@@ -57,7 +60,7 @@ struct UA_Server {
 #endif
 
     TAILQ_HEAD(UA_DelayedWorkQueue, UA_DelayedWork) delayedWork;
-    SLIST_HEAD(UA_TimedWorkList, UA_TimedWork) timedWork;
+    LIST_HEAD(UA_TimedWorkList, UA_TimedWork) timedWork;
 };
 
 void UA_Server_processBinaryMessage(UA_Server *server, UA_Connection *connection, const UA_ByteString *msg);
@@ -66,6 +69,8 @@ UA_AddNodesResult UA_Server_addNodeWithSession(UA_Server *server, UA_Session *se
                                                const UA_ExpandedNodeId *parentNodeId, const UA_NodeId *referenceTypeId);
 
 UA_StatusCode UA_Server_addReferenceWithSession(UA_Server *server, UA_Session *session, const UA_AddReferencesItem *item);
+
+void UA_Server_deleteTimedWork(UA_Server *server);
 
 /** The (nodes) AttributeIds are defined in part 6, table A1 of the standard */
 typedef enum {

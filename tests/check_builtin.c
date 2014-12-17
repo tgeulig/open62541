@@ -1117,8 +1117,8 @@ START_TEST(UA_DataValue_encodeShallWorkOnExampleWithVariant) {
 END_TEST
 START_TEST(UA_DateTime_toStructShallWorkOnExample) {
 	// given
-	UA_DateTime src = 13974671891234567;
-	//1397467189... is Mon, 14 Apr 2014 09:19:49 GMT
+	UA_DateTime src = 13974671891234567 + (11644473600 * 10000000); // ua counts since 1601, unix since 1970
+	//1397467189... is Mon, 14 Apr 2014 11:19:49 UCT
 	//...1234567 are the milli-, micro- and nanoseconds
 	UA_DateTimeStruct dst;
 
@@ -1134,7 +1134,7 @@ START_TEST(UA_DateTime_toStructShallWorkOnExample) {
 	ck_assert_int_eq(dst.hour, 9);
 
 	ck_assert_int_eq(dst.day, 14);
-	ck_assert_int_eq(dst.mounth, 4);
+	ck_assert_int_eq(dst.month, 4);
 	ck_assert_int_eq(dst.year, 2014);
 }
 END_TEST

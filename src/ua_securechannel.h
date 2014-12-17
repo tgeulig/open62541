@@ -9,8 +9,6 @@
 /**
  *  @ingroup communication
  *
- *  @defgroup securechannel SecureChannel
- *
  * @{
  */
 
@@ -38,6 +36,10 @@ UA_Boolean UA_SecureChannel_compare(UA_SecureChannel *sc1, UA_SecureChannel *sc2
 UA_StatusCode UA_SecureChannel_generateNonce(UA_ByteString *nonce);
 UA_Int32 UA_SecureChannel_updateRequestId(UA_SecureChannel *channel, UA_UInt32 requestId);
 UA_Int32 UA_SecureChannel_updateSequenceNumber(UA_SecureChannel *channel, UA_UInt32 sequenceNumber);
+
+void UA_Connection_attachSecureChannel(UA_Connection *connection, UA_SecureChannel *channel);
+void UA_SecureChannel_attachSession(UA_SecureChannel *channel, UA_Session *session);
+void UA_SecureChannel_detachSession(UA_SecureChannel *channel);
 
 /** @} */
 

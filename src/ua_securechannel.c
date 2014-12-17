@@ -1,8 +1,10 @@
-#include <time.h>
-#include <stdlib.h>
 #include "ua_securechannel.h"
 #include "ua_util.h"
 #include "ua_statuscodes.h"
+
+#ifdef UA_MULTITHREADING
+#include <urcu/uatomic.h>
+#endif
 
 void UA_SecureChannel_init(UA_SecureChannel *channel) {
     UA_AsymmetricAlgorithmSecurityHeader_init(&channel->clientAsymAlgSettings);
@@ -53,4 +55,29 @@ UA_Int32 UA_SecureChannel_updateSequenceNumber(UA_SecureChannel *channel, UA_UIn
         return UA_STATUSCODE_BADINTERNALERROR;
     channel->sequenceNumber++;
     return UA_STATUSCODE_GOOD;
+}
+
+void UA_Connection_detachSecureChannel(UA_Connection *connection) {
+#ifdef UA_MULTITHREADING
+    UA_SecureChannel *channel = connection->channel;
+    if(channel)
+        uatomic_cmpxchg(&channel->connection, connection, UA_NULL);
+    uatomic_set(&connection->channel, UA_NULL);
+#else
+    if(connection->channel)
+        connection->channel->connection = UA_NULL;
+    connection->channel = UA_NULL;
+#endif
+}
+
+void UA_Connection_attachSecureChannel(UA_Connection *connection, UA_SecureChannel *channel) {
+#ifdef UA_MULTITHREADING
+    if(uatomic_cmpxchg(&channel->connection, UA_NULL, connection) == UA_NULL)
+        uatomic_set(&connection->channel, channel);
+#else
+    if(channel->connection != UA_NULL)
+        return;
+    channel->connection = connection;
+    connection->channel = channel;
+#endif
 }

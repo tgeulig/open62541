@@ -6,6 +6,7 @@
 #include "ua_types_macros.h"
 #include "ua_util.h"
 
+// max message size is 64k
 const UA_EXPORT UA_ConnectionConfig UA_ConnectionConfig_standard =
     {.protocolVersion = 0, .sendBufferSize = 65536, .recvBufferSize  = 65536,
      .maxMessageSize = 65536, .maxChunkCount   = 1};

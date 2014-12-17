@@ -63,20 +63,24 @@ void UA_Server_unregisterThread() {
 #endif
 
 void UA_Server_delete(UA_Server *server) {
-    // todo: shutdown the network layers
-    // todo: empty and delete the dispatchQueue
+    // The server needs to be stopped before it can be deleted
+
+    // Delete the network layers
     for(UA_Int32 i=0;i<server->nlsSize;i++) {
-        server->nls[i].delete(server->nls[i].nlhandle);
+        server->nls[i].delete(server->nls[i].nlHandle);
     }
     UA_free(server->nls);
-    
+
+    // Delete the timed work
+    UA_Server_deleteTimedWork(server);
+
+    // Delete all internal data
     UA_ApplicationDescription_deleteMembers(&server->description);
     UA_SecureChannelManager_deleteMembers(&server->secureChannelManager);
     UA_SessionManager_deleteMembers(&server->sessionManager);
     UA_NodeStore_delete(server->nodestore);
     UA_ByteString_deleteMembers(&server->serverCertificate);
-    UA_Array_delete(server->endpointDescriptions, server->endpointDescriptionsSize,
-                    &UA_TYPES[UA_ENDPOINTDESCRIPTION]);
+    UA_Array_delete(server->endpointDescriptions, server->endpointDescriptionsSize, &UA_TYPES[UA_ENDPOINTDESCRIPTION]);
     UA_free(server);
 }
 
@@ -88,6 +92,13 @@ UA_Server * UA_Server_new(UA_String *endpointUrl, UA_ByteString *serverCertifica
 #ifdef UA_MULTITHREADING
 	cds_wfcq_init(&server->dispatchQueue_head, &server->dispatchQueue_tail);
 #endif
+
+    // init timed and delayed work
+    TAILQ_INIT(&server->delayedWork);
+    LIST_INIT(&server->timedWork);
+
+    // random seed
+    server->random_seed = (UA_UInt32) UA_DateTime_now();
 
     // networklayers
     server->nls = UA_NULL;
