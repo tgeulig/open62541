@@ -376,47 +376,41 @@ static void processClose(UA_Connection *connection, UA_Server *server, const UA_
 }
 
 void UA_Server_processBinaryMessage(UA_Server *server, UA_Connection *connection, const UA_ByteString *msg) {
-    UA_Int32  retval = UA_STATUSCODE_GOOD;
     UA_UInt32 pos    = 0;
     UA_TcpMessageHeader tcpMessageHeader;
-    // todo: test how far pos advanced must be equal to what is said in the messageheader
     do {
-        retval = UA_TcpMessageHeader_decodeBinary(msg, &pos, &tcpMessageHeader);
-        UA_UInt32 targetpos = pos - 8 + tcpMessageHeader.messageSize;
-        if(retval == UA_STATUSCODE_GOOD) {
-            // none of the process-functions returns an error its all contained inside.
-            switch(tcpMessageHeader.messageType) {
-            case UA_MESSAGETYPE_HEL:
-                processHello(connection, msg, &pos);
-                break;
-
-            case UA_MESSAGETYPE_OPN:
-                processOpen(connection, server, msg, &pos);
-                break;
-
-            case UA_MESSAGETYPE_MSG:
-            	//no break
-                // if this fails, the connection is closed (no break on the case)
-                if(connection->state == UA_CONNECTION_ESTABLISHED &&
-                   connection->channel != UA_NULL) {
-                    processMessage(connection, server, msg, &pos);
-                    break;
-                }
-
-            case UA_MESSAGETYPE_CLO:
-                processClose(connection, server, msg, &pos);
-                connection->close(connection);
-                return;
-            }
-            UA_TcpMessageHeader_deleteMembers(&tcpMessageHeader);
-        } else {
-            printf("TL_Process - ERROR: decoding of header failed \n");
-            //processClose(connection, server, msg, &pos);
+        if(UA_TcpMessageHeader_decodeBinary(msg, &pos, &tcpMessageHeader) != UA_STATUSCODE_GOOD) {
+            printf("ERROR: decoding of header failed \n");
             connection->close(connection);
+            break;
         }
-        // todo: more than one message at once..
+
+        UA_UInt32 targetpos = pos - 8 + tcpMessageHeader.messageSize;
+        switch(tcpMessageHeader.messageType) {
+        case UA_MESSAGETYPE_HEL:
+            processHello(connection, msg, &pos);
+            break;
+
+        case UA_MESSAGETYPE_OPN:
+            processOpen(connection, server, msg, &pos);
+            break;
+
+        case UA_MESSAGETYPE_MSG:
+            if(connection->state == UA_CONNECTION_ESTABLISHED && connection->channel != UA_NULL)
+                processMessage(connection, server, msg, &pos);
+            else
+                connection->close(connection);
+            break;
+
+        case UA_MESSAGETYPE_CLO:
+            processClose(connection, server, msg, &pos);
+            connection->close(connection);
+            return;
+        }
+        
+        UA_TcpMessageHeader_deleteMembers(&tcpMessageHeader);
         if(pos != targetpos) {
-            printf("The message size was not as announced or an error occurred while processing, skipping to the end of the message.\n");
+            printf("The message size was not as announced or the message could not be processed, skipping to the end of the message.\n");
             pos = targetpos;
         }
     } while(msg->length > (UA_Int32)pos);

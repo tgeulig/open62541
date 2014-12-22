@@ -58,6 +58,8 @@ add_definitions(-std=c99 -pedantic -pipe -Wall -Wextra -Werror -Wformat
         add_definitions(-Wformat-nonliteral)
         set (CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -Wl,--gc-sections")
         set (CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--gc-sections")
+    else()
+        add_definitions(-Wno-gnu-statement-expression)
     endif()
 	if(NOT WIN32)
 	    add_definitions(-fstack-protector -fPIC -fvisibility=hidden)

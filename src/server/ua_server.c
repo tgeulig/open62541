@@ -30,37 +30,15 @@ static void UA_ExternalNamespace_deleteMembers(UA_ExternalNamespace *ens) {
 /* Network Layer */
 /*****************/
 
-void UA_Server_addNetworkLayer(UA_Server *server, UA_NetworkLayer *networkLayer) {
-    if(networkLayer == UA_NULL)
-        return;
-    if(server->nls == UA_NULL) {
-        server->nls = networkLayer;
-        server->nlsSize = 1;
-        return;
-    }
-
-    server->nls = UA_realloc(server->nls, sizeof(UA_NetworkLayer)*server->nlsSize+1);
-    server->nls[server->nlsSize] = *networkLayer;
-    server->nls++;
-    UA_free(networkLayer);
+void UA_Server_addNetworkLayer(UA_Server *server, UA_NetworkLayer networkLayer) {
+    server->nls = UA_realloc(server->nls, sizeof(UA_NetworkLayer)*(server->nlsSize+1));
+    server->nls[server->nlsSize] = networkLayer;
+    server->nlsSize++;
 }
 
 /**********/
 /* Server */
 /**********/
-
-#ifdef UA_MULTITHREADING
-void UA_Server_registerThread() {
-   	rcu_register_thread();
-}
-#endif
-
-#ifdef UA_MULTITHREADING
-void UA_Server_unregisterThread() {
-    rcu_barrier(); // wait for all scheduled call_rcu work to complete
-   	rcu_unregister_thread();
-}
-#endif
 
 void UA_Server_delete(UA_Server *server) {
     // The server needs to be stopped before it can be deleted
@@ -82,6 +60,9 @@ void UA_Server_delete(UA_Server *server) {
     UA_ByteString_deleteMembers(&server->serverCertificate);
     UA_Array_delete(server->endpointDescriptions, server->endpointDescriptionsSize, &UA_TYPES[UA_ENDPOINTDESCRIPTION]);
     UA_free(server);
+#ifdef UA_MULTITHREADING
+    rcu_barrier(); // wait for all scheduled call_rcu work to complete
+#endif
 }
 
 UA_Server * UA_Server_new(UA_String *endpointUrl, UA_ByteString *serverCertificate) {
@@ -90,11 +71,10 @@ UA_Server * UA_Server_new(UA_String *endpointUrl, UA_ByteString *serverCertifica
         return UA_NULL;
 
 #ifdef UA_MULTITHREADING
+    rcu_init();
 	cds_wfcq_init(&server->dispatchQueue_head, &server->dispatchQueue_tail);
+    server->delayedWork = UA_NULL;
 #endif
-
-    // init timed and delayed work
-    TAILQ_INIT(&server->delayedWork);
     LIST_INIT(&server->timedWork);
 
     // random seed

@@ -47,19 +47,18 @@ struct UA_Server {
     UA_NetworkLayer *nls;
 
     UA_UInt32 random_seed;
-    /* pthread_mutex_t mainMutex; // select Server_.. functions interfere with the main loop */
 
 #ifdef UA_MULTITHREADING
     UA_Boolean *running;
     UA_UInt16 nThreads;
     UA_UInt32 **workerCounters;
+    UA_DelayedWork *delayedWork;
 
     // worker threads wait on the queue
 	struct cds_wfcq_head dispatchQueue_head;
 	struct cds_wfcq_tail dispatchQueue_tail;
 #endif
 
-    TAILQ_HEAD(UA_DelayedWorkQueue, UA_DelayedWork) delayedWork;
     LIST_HEAD(UA_TimedWorkList, UA_TimedWork) timedWork;
 };
 

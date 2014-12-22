@@ -38,12 +38,21 @@ typedef struct UA_Server UA_Server;
 UA_Server UA_EXPORT * UA_Server_new(UA_String *endpointUrl, UA_ByteString *serverCertificate);
 void UA_EXPORT UA_Server_delete(UA_Server *server);
 
-#ifdef UA_MULTITHREADING
-/** Threads that work on a UA server with multithreading need to register */
-void UA_EXPORT UA_Server_registerThread();
-/** Threads that work on a UA server with multithreading need to unregister before closing down */
-void UA_EXPORT UA_Server_unregisterThread();
-#endif
+/**
+ * Runs the main loop of the server. In each iteration, this calls into the
+ * networklayers to see if work have arrived and checks if timed events need to
+ * be triggered.
+ *
+ * @param server The server object
+ * @param nThreads The number of worker threads. Is ignored if MULTITHREADING is
+ * not activated.
+ * @param running Points to a booloean value on the heap. When running is set to
+ * false, the worker threads and the main loop close and the server is shut
+ * down.
+ * @return Indicates whether the server shut down cleanly
+ *
+ */
+UA_StatusCode UA_EXPORT UA_Server_run(UA_Server *server, UA_UInt16 nThreads, UA_Boolean *running);
 
 /**
  * Add a node to the server's address space
@@ -68,44 +77,30 @@ void UA_EXPORT UA_Server_addScalarVariableNode(UA_Server *server, UA_QualifiedNa
                                                const UA_ExpandedNodeId *parentNodeId,
                                                const UA_NodeId *referenceTypeId );
 
-/**
- * @defgroup worker Worker Threads
- *
- * @brief Work items (network events, timed events, ...) are collected and
- * dispatched to worker threads from a central queue
- *
- * @{
- */
-
-/** Contains the necessary information to dispatch work to a worker thread */
+/** Work that is run in the main loop (singlethreaded) or dispatched to a worker
+    thread. */
 typedef struct UA_WorkItem {
     enum {
         UA_WORKITEMTYPE_NOTHING,
         UA_WORKITEMTYPE_BINARYNETWORKMESSAGE,
-        UA_WORKITEMTYPE_BINARYNETWORKCLOSED,
         UA_WORKITEMTYPE_METHODCALL,
-        UA_WORKITEMTYPE_DELAYEDFREE
-    } type; ///< Type of the WorkItem
+        UA_WORKITEMTYPE_DELAYEDMETHODCALL,
+    } type;
     union {
         struct {
             UA_Connection *connection;
             UA_ByteString message;
-        } binaryNetworkMessage; ///< A message was received
-        UA_Connection * binaryNetworkClosed; ///< A connection has been closed (internal or remotely). Clean up internally
+        } binaryNetworkMessage;
         struct {
             void * data;
             void (*method)(UA_Server *server, void *data);
-        } methodCall; ///< Call the function with the data pointer from a worker thread
-        void *delayedFree; ///< Data is obsolete. But other worker threads might still use it. Free the data as soon as
-                           /// all current workItems are finished.
-    } item;
+        } methodCall;
+    } work;
 } UA_WorkItem;
-
-void UA_EXPORT UA_Server_asyncRunWorkItem(UA_Server *server, UA_WorkItem **work);
 
 /**
  * Add work that is executed at a given time in the future. If the indicated
- * time lies in the past, the work is * executed immediately.
+ * time lies in the past, the work is executed immediately.
  *
  * The work pointer is not freed but copied to an internal representation
  */
@@ -123,8 +118,6 @@ UA_Guid UA_EXPORT UA_Server_addRepeatedWorkItem(UA_Server *server, UA_WorkItem *
 /** Remove timed or repeated work */
 UA_Boolean UA_EXPORT UA_Server_removeWorkItem(UA_Server *server, UA_Guid workId);
 
-/** @} */
-
 /**
  * Interface to the binary network layers. This structure is returned from the
  * function that initializes the network layer. The layer is already bound to a
@@ -133,7 +126,7 @@ UA_Boolean UA_EXPORT UA_Server_removeWorkItem(UA_Server *server, UA_Guid workId)
  * layer does not need to be thread-safe.
  */
 typedef struct {
-    void *nlHandle; ///< Internal data of the network layer
+    void *nlHandle;
 
     /**
      * Starts listening on the the networklayer.
@@ -150,6 +143,7 @@ typedef struct {
      *
      * @param workItems When the returned integer is positive, *workItems points
      * to an array of WorkItems of the returned size.
+     * @param timeout The timeout during which an event must arrive.
      * @return The size of the returned workItems array. If the result is
      * negative, an error has occured.
      */
@@ -175,23 +169,7 @@ typedef struct {
  * with the server. Do not use it after adding it as it might be moved around on
  * the heap.
  */
-void UA_EXPORT UA_Server_addNetworkLayer(UA_Server *server, UA_NetworkLayer *networkLayer);
-
-/**
- * Runs the main loop of the server. In each iteration, this calls into the
- * networklayers to see if work have arrived and checks if timed events need to
- * be triggered.
- *
- * @param server The server object
- * @param nThreads The number of worker threads. Is ignored if MULTITHREADING is
- * not activated.
- * @param running Points to a booloean value on the heap. When running is set to
- * false, the worker threads and the main loop close and the server is shut
- * down.
- * @return Indicates whether the server shut down cleanly
- *
- */
-UA_StatusCode UA_EXPORT UA_Server_run(UA_Server *server, UA_UInt16 nThreads, UA_Boolean *running);
+void UA_EXPORT UA_Server_addNetworkLayer(UA_Server *server, UA_NetworkLayer networkLayer);
 
 /** @} */
 

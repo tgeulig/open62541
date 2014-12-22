@@ -53,17 +53,13 @@ void test(UA_Server *server, void *data) {
 int main(int argc, char** argv) {
 	signal(SIGINT, stopHandler); /* catches ctrl-c */
 
-#ifdef UA_MULTITHREADING
-    UA_Server_registerThread();
-#endif
-
 	UA_String endpointUrl;
     UA_String_copycstring("opc.tcp://localhost:16664",&endpointUrl);
 	UA_ByteString certificate = loadCertificate();
 	UA_Server *server = UA_Server_new(&endpointUrl, &certificate);
 
-    /* UA_WorkItem work = {.type = UA_WORKITEMTYPE_METHODCALL, .item.methodCall = {.method = test, .data = UA_NULL} }; */
-    /* UA_Server_addRepeatedWorkItem(server, &work, 10000000); */
+    UA_WorkItem work = {.type = UA_WORKITEMTYPE_METHODCALL, .work.methodCall = {.method = test, .data = UA_NULL} };
+    UA_Server_addRepeatedWorkItem(server, &work, 10000000);
 
 	//add a node to the adresspace
     UA_Int32 *myInteger = UA_Int32_new();
@@ -103,9 +99,5 @@ int main(int argc, char** argv) {
 	UA_Server_delete(server);
     UA_String_deleteMembers(&endpointUrl);
 
-#ifdef UA_MULTITHREADING
-    UA_Server_unregisterThread();
-#endif
-    
 	return retval;
 }

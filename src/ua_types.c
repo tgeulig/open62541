@@ -333,8 +333,10 @@ UA_Guid UA_EXPORT UA_Guid_random(UA_UInt32 *seed) {
     UA_UInt32 r = rand_r(seed);
     result.data2 = r;
     result.data3 = r >> 16;
-    *((UA_UInt32*)&result.data4[0]) = rand_r(seed);
-    *((UA_UInt32*)&result.data4[4]) = rand_r(seed);
+    UA_UInt32 *fake_int = (UA_UInt32*) &result.data4[0];
+    *fake_int = rand_r(seed);
+    fake_int = (UA_UInt32*) &result.data4[4];
+    *fake_int = rand_r(seed);
     return result;
 }
 
