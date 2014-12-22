@@ -13,6 +13,8 @@
 #else
 #include <sys/select.h> 
 #include <netinet/in.h>
+#include <sys/socketvar.h>
+#include <sys/ioctl.h>
 #include <unistd.h> // read, write, close
 #define CLOSESOCKET(S) close(S)
 #endif
