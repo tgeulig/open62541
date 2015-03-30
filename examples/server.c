@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
         UA_QualifiedName *nodeName = UA_QualifiedName_new();
         sprintf(str,"%d",i);
         UA_QualifiedName_copycstring(str, nodeName);
-        UA_Server_addVariableNode(server, variant, nodeName, UA_NODEID_NULL, 
+        UA_Server_addVariableNode(server, variant, *nodeName, UA_NODEID_NULL, 
                                   UA_NODEID_STATIC(0, UA_NS0ID_OBJECTSFOLDER),
                                   UA_NODEID_STATIC(0, UA_NS0ID_ORGANIZES));
     }

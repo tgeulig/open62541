@@ -44,3 +44,12 @@ add_test(nodestore ${CMAKE_CURRENT_BINARY_DIR}/check_nodestore)
 # add_executable(check_startup check_startup.c)
 # target_link_libraries(check_startup ${LIBS})
 # add_test(startup ${CMAKE_CURRENT_BINARY_DIR}/check_startup)
+
+add_executable(check_server_interaction_fileinput check_server_interaction_fileinput.c
+                                                  testing_networklayers.c
+                                                  ${PROJECT_SOURCE_DIR}/examples/logger_stdout.c
+                                                  $<TARGET_OBJECTS:open62541-object>)
+
+target_include_directories(check_server_interaction_fileinput PRIVATE ${PROJECT_SOURCE_DIR}/examples)
+target_link_libraries(check_server_interaction_fileinput ${LIBS})
+add_test(server_interaction_fileinput ${CMAKE_CURRENT_BINARY_DIR}/check_server_interaction_fileinput ${PROJECT_SOURCE_DIR}/tests/dumps/client_readVariable.hex)
