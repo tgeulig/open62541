@@ -15,6 +15,9 @@
 #ifndef _BSD_SOURCE
 # define _BSD_SOURCE
 #endif
+#ifndef _DEFAULT_SOURCE
+# define _DEFAULT_SOURCE
+#endif
 
 /*********************/
 /* Memory Management */
@@ -62,6 +65,7 @@
 #include <inttypes.h>
 
 #ifdef _WIN32
+# include <winsock2.h> //needed for amalgation
 # include <windows.h>
 # undef SLIST_ENTRY
 # define RAND(SEED) (UA_UInt32)rand()

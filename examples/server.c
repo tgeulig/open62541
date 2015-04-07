@@ -2,25 +2,24 @@
  * This work is licensed under a Creative Commons CCZero 1.0 Universal License.
  * See http://creativecommons.org/publicdomain/zero/1.0/ for more information.
  */
-#ifdef NOT_AMALGATED
-    #include "ua_types.h"
-    #include "ua_server.h"
-#else
-    #include "open62541.h"
-#endif
 
-#include <time.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h> 
-#include <signal.h>
 #define __USE_XOPEN2K
 #ifdef UA_MULTITHREADING
-#include <pthread.h>
+# include <pthread.h>
 #endif
 
-// provided by the user, implementations available in the /examples folder
-#include "logger_stdout.h"
-#include "networklayer_tcp.h"
+#ifdef NOT_AMALGATED
+# include <time.h>
+# include "ua_types.h"
+# include "ua_server.h"
+# include "logger_stdout.h"
+# include "networklayer_tcp.h"
+#else
+# include "open62541.h"
+#endif
 
 /****************************/
 /* Server-related variables */
@@ -181,7 +180,7 @@ int main(int argc, char** argv) {
 		.read = readTimeData,
 		.release = releaseTimeData,
 		.write = NULL};
-	const UA_QualifiedName dateName = UA_QUALIFIEDNAME_STATIC(0, "current time");
+	const UA_QualifiedName dateName = UA_QUALIFIEDNAME(0, "current time");
 	UA_Server_addDataSourceVariableNode(server, dateDataSource, dateName, UA_NODEID_NULL,
                                         UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
                                         UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES));
@@ -195,7 +194,7 @@ int main(int argc, char** argv) {
 			.read = readTemperature,
 			.release = releaseTemperature,
 			.write = NULL};
-		UA_QualifiedName ledName = UA_QUALIFIEDNAME(0, "cpu temperature");
+		const UA_QualifiedName ledName = UA_QUALIFIEDNAME(0, "cpu temperature");
 		UA_Server_addDataSourceVariableNode(server, temperatureDataSource, ledName, UA_NODEID_NULL, 
                                             UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
                                             UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES));
@@ -221,7 +220,7 @@ int main(int argc, char** argv) {
 		.read = readLedStatus,
 		.release = releaseLedStatus,
 		.write = writeLedStatus};
-	const UA_QualifiedName statusName = UA_QUALIFIEDNAME_STATIC(0, "status LED");
+	const UA_QualifiedName statusName = UA_QUALIFIEDNAME(0, "status LED");
 	UA_Server_addDataSourceVariableNode(server, ledStatusDataSource, statusName, UA_NODEID_NULL,
                                         UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
                                         UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES));
@@ -230,8 +229,8 @@ int main(int argc, char** argv) {
     UA_Variant *myIntegerVariant = UA_Variant_new();
     UA_Int32 myInteger = 42;
     UA_Variant_setScalarCopy(myIntegerVariant, &myInteger, &UA_TYPES[UA_TYPES_INT32]);
-    UA_QualifiedName myIntegerName = UA_QUALIFIEDNAME_STATIC(0, "the answer");
-    UA_NodeId myIntegerNodeId = UA_NODEID_STRING(1, "the.answer");
+    const UA_QualifiedName myIntegerName = UA_QUALIFIEDNAME(0, "the answer");
+    const UA_NodeId myIntegerNodeId = UA_NODEID_STRING(1, "the.answer");
     UA_NodeId parentNodeId = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
     UA_NodeId parentReferenceNodeId = UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES);
     UA_Server_addVariableNode(server, myIntegerVariant, myIntegerName,
